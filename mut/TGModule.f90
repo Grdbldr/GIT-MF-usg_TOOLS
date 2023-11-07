@@ -20,6 +20,48 @@ module MUT  !### Modflow-USG Tools
 
     contains
 
+    subroutine Header
+        call date_and_time(DateSTR, TIME = TimeSTR, ZONE = TimezoneSTR)
+        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
+        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
+        call Msg( '@@                                                                      @@ ')
+        call Msg( '@@                    MUT         '//MUTVersion//'                                 @@ ')
+        call Msg( '@@                    Run date '//DateStr//'                             @@ ')
+        call Msg( '@@                                                                      @@ ')
+        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
+        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
+    end subroutine  header
+
+    subroutine OpenMUT  !--- DoItThing .dit
+
+        write(*,'(a)')  'MUT version '//MUTVersion
+
+        ! open the user MUT input file
+        call EnterPrefix(prefix,l_prfx,FnumUserMUT,'mut')
+
+        ! open a file called prefix.eco, if it exists, overwrite it with MUT header
+        FNameEco=prefix(:l_prfx)//'.eco'
+        call openascii(FnumEco,FNameEco)
+        call header
+        call Msg ('Echo file: '//FNameEco)
+        call Msg ('User input file: '//prefix(:l_prfx)//'.mut')
+        ErrFNum=FnumEco
+
+
+        ! Create one processed input file
+        FNameInput=prefix(:l_prfx)//'.input'
+        call openascii(FnumMUT,FNameInput)
+
+        ! strip out blanks and comments and concatenate included files
+        call StripComments(FnumUserMUT,FnumMUT)
+	    call freeunit(FnumUserMUT)
+	
+
+
+    end subroutine OpenMUT
+
+
+
     subroutine ProcessMUT !--- Command processor for Modflow-USG Tools (.mut file extension)
 
         type (MUSG_Project) MyMUSG_Project
@@ -60,45 +102,6 @@ module MUT  !### Modflow-USG Tools
 
         10 continue
     end subroutine ProcessMUT
-        subroutine OpenMUT  !--- DoItThing .dit
-
-        write(*,'(a)')  'MUT version '//MUTVersion
-
-        ! open the user MUT input file
-        call EnterPrefix(prefix,l_prfx,FnumUserMUT,'mut')
-
-        ! open a file called prefix.eco, if it exists, overwrite it with MUT header
-        FNameEco=prefix(:l_prfx)//'.eco'
-        call openascii(FnumEco,FNameEco)
-        call header
-        call Msg ('Echo file: '//FNameEco)
-        call Msg ('User input file: '//prefix(:l_prfx)//'.mut')
-        ErrFNum=FnumEco
-
-
-        ! Create one processed input file
-        FNameInput=prefix(:l_prfx)//'.input'
-        call openascii(FnumMUT,FNameInput)
-
-        ! strip out blanks and comments and concatenate included files
-        call StripComments(FnumUserMUT,FnumMUT)
-	    call freeunit(FnumUserMUT)
-	
-
-
-    end subroutine OpenMUT
-
-    subroutine Header
-        call date_and_time(DateSTR, TIME = TimeSTR, ZONE = TimezoneSTR)
-        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
-        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
-        call Msg( '@@                                                                      @@ ')
-        call Msg( '@@                    MUT         '//MUTVersion//'                                 @@ ')
-        call Msg( '@@                    Run date '//DateStr//'                             @@ ')
-        call Msg( '@@                                                                      @@ ')
-        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
-        call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
-    end subroutine  header
 
 
     subroutine CloseMUT !--- Modflow-USG Tools .mut

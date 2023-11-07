@@ -12,7 +12,7 @@ module MUSG !
     character(60) :: MUSG_ReadGSF_CMD='read gsf'
     character(60) :: MUSG_ReadBinaryHeadFile_CMD='read binary head file'
     character(60) :: MUSG_ReadBinaryDrawdownFile_CMD='read binary drawdown file'
-    character(60) :: MUSG_ToTecplot_CMD='modflow_usg to tecplot'
+    character(60) :: MUSG_GWF_ToTecplot_CMD='modflow_usg to tecplot'
 
     character(60) :: MUSG_ReadBinaryCbbFile_CMD='read binary cell by cell flow file'
     character(60) :: MUSG_CbbToTecplot_CMD='cbb to tecplot'
@@ -21,6 +21,9 @@ module MUSG !
     character(60) :: MUSG_ClnToTecplot_CMD='cln to tecplot'
 
     character(60) :: MUSG_WBudgetToTecplot_CMD='water budget to tecplot'
+    !character(60) :: MUSG_Lexicon_CMD='build lexicon'
+    
+    
 
     
     character(60) :: MUSG_ReadAsciiHeadFile_CMD='read usgbin2tab_h head file'
@@ -51,41 +54,47 @@ module MUSG !
     
     character(MAXLBL) :: fname
     character(MAXSTRING) :: line
-
-
+    
     
     
     ! Added for Modflow-USG Tools
+    
 
     type MUSG_Mesh
-        integer :: nnode   ! is the number of nodes (my ne) in the grid
-        integer :: nlay    ! is the number of layers in the model
+        character(128) :: meshtype
+        integer :: nCell   ! is the number of cells (elements in HGS) in the mesh
+        integer :: nLay    ! is the number of layers in the model (if specific to gwf mesh should move to type project MUSG_Project? )
+
         integer :: iz      ! is 1 if the elevations of node and mesh elements vertices are supplied; 0 otherwise
-        integer :: ic      ! is 1 if the cell secifications associated with each node are supplied; 0 otherwise
+        integer :: ic      ! is 1 if the cell specifications associated with each node are supplied; 0 otherwise
             
+            
+        ! arrays of size nCell
+        real(dr), allocatable :: xCell(:)      ! cell x coordinate
+        real(dr), allocatable :: yCell(:)      ! cell y coordinate
+        real(dr), allocatable :: zCell(:)      ! cell z coordinate
+        integer, allocatable :: lay(:)      ! cell layer number
+        integer :: m
+
+        ! of size nCell, m
+        integer, allocatable :: ivertex(:,:)
+
         integer :: nvertex ! is the number of element vertex definitions to follow (my nn)
         ! of size nvertex
         real(dr), allocatable :: x(:) 
         real(dr), allocatable :: y(:)
         real(dr), allocatable :: z(:)
-            
-        ! of size nnode
-        integer, allocatable :: inode(:)
-        real(dr), allocatable :: xe(:) 
-        real(dr), allocatable :: ye(:)
-        real(dr), allocatable :: ze(:)
-        integer, allocatable :: lay(:)
-        integer :: m
-        ! of size nnode, m
-        integer, allocatable :: ivertex(:,:)
         
         logical :: have_mesh=.false.
             
     end type MUSG_Mesh
+ 
 
     type MUSG_Project
  
-        type(MUSG_Mesh) mesh
+        type(MUSG_Mesh) gwf
+        type(MUSG_Mesh) cln
+        type(MUSG_Mesh) swf
         
         character(128) :: MUTPrefix
         character(128) :: Prefix
@@ -94,9 +103,21 @@ module MUSG !
         character(128) :: FNameGSF
         integer :: iGSF
         
+        ! CLNGSF file required for grid dimensions but not listed in NAM file
+        character(128) :: FNameCLNGSF
+        integer :: iCLNGSF
+        
+        ! SWFGSF file required for grid dimensions but not listed in NAM file
+        character(128) :: FNameSWFGSF
+        integer :: iSWFGSF
+        
         ! NAM file
         character(128) :: FNameNAM
         integer :: iNAM
+        
+        ! DISU file
+        character(128) :: FNameDISU
+        integer :: iDISU
 
         ! LIST file
         character(128) :: FNameLIST
@@ -111,11 +132,52 @@ module MUSG !
         logical :: FREE=.false.  
         logical :: RICHARDS=.false.
 
+        ! SMS file
+        character(128) :: FNameSMS
+        integer :: iSMS
+
         ! OC file
         character(128) :: FNameOC
         integer :: iOC
-        integer :: ntime
+        integer :: ntime = 0
         real, allocatable :: totim(:)
+        
+        ! RCH file
+        character(128) :: FNameRCH
+        integer :: iRCH
+        
+        ! RIV file
+        character(128) :: FNameRIV
+        integer :: iRIV
+        
+        ! WEL file
+        character(128) :: FNameWEL
+        integer :: iWEL
+        
+        ! CHD file
+        character(128) :: FNameCHD
+        integer :: iCHD
+        
+        ! EVT file
+        character(128) :: FNameEVT
+        integer :: iEVT
+        
+        ! DRN file
+        character(128) :: FNameDRN
+        integer :: iDRN
+ 
+        ! LPF file
+        character(128) :: FNameLPF
+        integer :: iLPF
+
+        ! CLN file
+        character(128) :: FNameCLN
+        integer :: iCLN
+
+        ! GNC file
+        character(128) :: FNameGNC
+        integer :: iGNC
+
 
         
         ! DATA(BINARY) files
@@ -123,11 +185,13 @@ module MUSG !
         character(128) :: FNameHDS
         integer :: iHDS
 	    real, allocatable :: Head(:,:)
+	    real, allocatable :: clnHead(:,:)
         
         ! DDN file
         character(128) :: FNameDDN
         integer :: iDDN
 	    real, allocatable :: Sat(:,:)
+	    real, allocatable :: clnSat(:,:)
         
         ! CBB file
         character(128) :: FNameCBB
@@ -138,6 +202,21 @@ module MUSG !
 	    real, allocatable :: Cbb_DRAINS(:,:)
 	    real, allocatable :: Cbb_ja(:,:)
 
+        ! CBCCLN file
+        character(128) :: FNameCBCCLN
+        integer :: iCBCCLN
+	    real, allocatable :: CBCCLN_STORAGE(:,:)
+	    real, allocatable :: CBCCLN_CONSTANT_HEAD(:,:)
+	    real, allocatable :: CBCCLN_RECHARGE(:,:)
+	    real, allocatable :: CBCCLN_DRAINS(:,:)
+	    real, allocatable :: CBCCLN_ja(:,:)
+        
+        ! Scan file
+        integer :: nDim=10000
+        integer :: nKeyWord
+        character(MAXSTRING), ALLOCATABLE :: KeyWord(:) ! read buffer for location data
+        character(128) :: FNameLEX
+        integer :: iLEX
 
         character(128) :: Name
         integer :: LengthName
@@ -149,7 +228,6 @@ module MUSG !
 
         logical,allocatable :: nchosen(:)
 
-        character(128) :: meshtype
         integer :: iz
         integer :: ic
 
@@ -214,6 +292,14 @@ module MUSG !
         
         ! cln file
         
+      ! URWORD        
+      integer :: linlen
+      integer :: ncode, icol, iout, in
+      integer :: istart
+      real :: r
+      integer :: istop,n
+
+        
 
     end type MUSG_Project
 
@@ -258,8 +344,8 @@ module MUSG !
             !else if(index(MUSG_CMD, MUSG_ReadBinaryDrawdownFile_CMD)  /= 0) then
             !    call MUSG_ReadBinaryDrawdownFile(FnumTG, musg_l)
 
-            !else if(index(MUSG_CMD, MUSG_ToTecplot_CMD)  /= 0) then
-            !    call MUSG_ToTecplot(FnumTG, musg_l)
+            !else if(index(MUSG_CMD, MUSG_GWF_ToTecplot_CMD)  /= 0) then
+            !    call MUSG_GWF_ToTecplot(FnumTG, musg_l)
                 
 
             !else if(index(MUSG_CMD, MUSG_ReadBinaryCbbFile_CMD)  /= 0) then
@@ -301,6 +387,9 @@ module MUSG !
             
             !else if(index(MUSG_CMD, MUSG_WBudgetToTecplot_CMD)  /= 0) then
             !    call MUSG_WBudgetToTecplot(FnumTG)
+                
+            !else if(index(MUSG_CMD, MUSG_Lexicon_CMD)  /= 0) then
+            !    call MUSG_BuildLexicon(FnumTG, musg_l)
 
             else if(index(MUSG_CMD, MUSG_RiverConductanceUpdate_CMD)  /= 0) then
                 call MUSG_RiverConductanceUpdate(FnumTG)
@@ -350,29 +439,69 @@ module MUSG !
 
         10 continue
 
-   end subroutine ProcessModflowUSG
-   
-   subroutine MUSG_ProcessFiles(FnumTG, musg_l)
+    end subroutine ProcessModflowUSG
+
+    subroutine MUSG_ProcessFiles(FnumTG, musg_l)
         implicit none
         
         integer :: FnumTG
         type (MUSG_Project) musg_l
+        
+        !integer :: Initial_nKeyWord
+        
 
         ! read prefix for project
         read(FnumTG,'(a)') musg_l.Prefix
+		call lcase(musg_l.Prefix)
         call Msg('Modflow project prefix: '//musg_l.Prefix)
 
-        ! Process GSF file
+        ! Process GSF file (should be part of NAM file processing, not separate
+        ! Same for cln.gsf and swf.gsf later
         musg_l.FNameGSF=musg_l.Prefix(:len_trim(musg_l.Prefix))//'.gsf'
         inquire(file=musg_l.FNameGSF,exist=FileExists)
         if(.not. FileExists) then
-            call ErrMsg('No file found: '//musg_l.FNameGSF)
-        endif
-        call Msg('Modflow GSF file: '//musg_l.FNameGSF)
-	    call getunit(musg_l.iGSF)
-        open(musg_l.iGSF,file=musg_l.FNameGSF,status='unknown',form='formatted')
+            call Msg('No grid specification file: '//musg_l.FNameGSF)
+        else
+            call Msg('Modflow GSF file: '//musg_l.FNameGSF)
+	        call getunit(musg_l.iGSF)
+            open(musg_l.iGSF,file=musg_l.FNameGSF,status='unknown',form='formatted')
         
-        call MUSG_ReadGSF(musg_l)
+            call MUSG_ReadGSF(musg_l)
+        endif
+
+        musg_l.FNameCLNGSF=musg_l.Prefix(:len_trim(musg_l.Prefix))//'.cln.gsf'
+        inquire(file=musg_l.FNameCLNGSF,exist=FileExists)
+        if(.not. FileExists) then
+            call Msg('No grid specification file: '//musg_l.FNameCLNGSF)
+        else
+            call Msg('Modflow CLNGSF file: '//musg_l.FNameCLNGSF)
+	        call getunit(musg_l.iCLNGSF)
+            open(musg_l.iCLNGSF,file=musg_l.FNameCLNGSF,status='unknown',form='formatted')
+        
+            call MUSG_ReadCLNGSF(musg_l)
+        endif
+
+        !musg_l.FNameSWFGSF=musg_l.Prefix(:len_trim(musg_l.Prefix))//'.swf.gsf'
+        !inquire(file=musg_l.FNameSWFGSF,exist=FileExists)
+        !if(.not. FileExists) then
+        !    call Msg('No grid specification file: '//musg_l.FNameSWFGSF)
+        !else
+        !    call Msg('Modflow SWFGSF file: '//musg_l.FNameSWFGSF)
+	       ! call getunit(musg_l.iSWFGSF)
+        !    open(musg_l.iSWFGSF,file=musg_l.FNameSWFGSF,status='unknown',form='formatted')
+        !
+        !    call MUSG_ReadSWFGSF(musg_l)
+        !endif
+        !
+        
+        ! Scan file
+        musg_l.FNameLEX=musg_l.MUTPrefix(:len_trim(musg_l.MUTPrefix))//'.scan'
+        open(musg_l.iLEX,file=musg_l.FNameLEX,status='unknown',form='formatted')
+        write(musg_l.iLEX,'(a)') 'Scan file from project '//musg_l.prefix(:len_trim(musg_l.prefix))
+        musg_l.nKeyWord=0
+        allocate(musg_l.KeyWord(musg_l.nDim))
+        musg_l.KeyWord(:)='UNDEFINED'
+
 
         ! Process NAM file
         musg_l.FNameNAM=musg_l.Prefix(:len_trim(musg_l.Prefix))//'.nam'
@@ -384,116 +513,137 @@ module MUSG !
 	    call getunit(musg_l.iNAM)
         open(musg_l.iNAM,file=musg_l.FNameNAM,status='unknown',form='formatted')
         
+        write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameNAM(:len_trim(musg_l.FNameNAM))//'-----------------------------------------------------'
+        call MUSG_ScanFileToLexicon(musg_l.iNAM,musg_l)
+
+        
         ! read initial comment lines beginning with #
         do 
             read(musg_l.iNAM,'(a)',iostat=status) line
-            if(status /= 0) return
+            if(status /= 0) exit
             
             if(line(1:1).eq.'#') then
                 call Msg(line(:len_trim(line)))
                 cycle
             endif
+            
+            call lcase(line)
         
-            if(index(line,'LIST') .gt. 0) then
-                call Msg(' ')
-                call Msg('---------------LIST file postprocessing ')
-                l1=len_trim(musg_l.Prefix)
-                l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                musg_l.FNameLIST=line(l1:)
-                inquire(file=musg_l.FNameLIST,exist=FileExists)
-                if(.not. FileExists) then
-                    call ErrMsg('No file found: '//musg_l.FNameLIST)
-                endif
-                call Msg('Modflow LIST file: '//musg_l.FNameLIST)
-	            call getunit(musg_l.iLIST)
-                open(musg_l.iLIST,file=musg_l.FNameLIST,status='unknown',form='formatted')
-            
+            if(index(line,'list') .gt. 0) then
+                call openMUSGFile('LIST',line,musg_l.Prefix,musg_l.iLIST,musg_l.FNameLIST)
+                
                 call MUSG_WriteVolumeBudgetToTecplot(musg_l)
-            
-            else if(index(line,'BAS6') .gt. 0) then
-                call Msg(' ')
-                call Msg('---------------BAS6 file postprocessing ')
-                l1=len_trim(musg_l.Prefix)
-                l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                musg_l.FNameBAS6=line(l1:)
-                inquire(file=musg_l.FNameBAS6,exist=FileExists)
-                if(.not. FileExists) then
-                    call ErrMsg('No file found: '//musg_l.FNameBAS6)
-                endif
-                call Msg('Modflow BAS file: '//musg_l.FNameBAS6)
-	            call getunit(musg_l.iBAS6)
-                open(musg_l.iBAS6,file=musg_l.FNameBAS6,status='unknown',form='formatted')
-            
+                call MUSG_CreateStepPeriodTimeFile(musg_l)
+
+            else if(index(line,'disu') .gt. 0) then
+                call openMUSGFile('DISU',line,musg_l.Prefix,musg_l.iDISU,musg_l.FNameDISU)
+                
+                write(musg_l.iLEX,'(a)')'Scanning: '//musg_l.FNameDISU(:len_trim(musg_l.FNameDISU))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iDISU,musg_l)
+                
+                !call MUSG_ReadDISU(musg_l)
+                
+                
+            else if(index(line,'bas6') .gt. 0) then
+                call openMUSGFile('BAS6',line,musg_l.Prefix,musg_l.iBAS6,musg_l.FNameBAS6)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameBAS6(:len_trim(musg_l.FNameBAS6))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iBAS6,musg_l)
                 call MUSG_SetOptionsFromBAS6(musg_l)
 
-            else if(index(line,'OC') .gt. 0) then
-                call Msg(' ')
-                call Msg('---------------OC file postprocessing ')
-                l1=len_trim(musg_l.Prefix)
-                l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                musg_l.FNameOC=line(l1:)
-                inquire(file=musg_l.FNameOC,exist=FileExists)
-                if(.not. FileExists) then
-                    call ErrMsg('No file found: '//musg_l.FNameOC)
-                endif
-                call Msg('Modflow BAS file: '//musg_l.FNameOC)
-	            call getunit(musg_l.iOC)
-                open(musg_l.iOC,file=musg_l.FNameOC,status='unknown',form='formatted')
-            
+            else if(index(line,'sms') .gt. 0) then
+                call openMUSGFile('SMS',line,musg_l.Prefix,musg_l.iSMS,musg_l.FNameSMS)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameSMS(:len_trim(musg_l.FNameSMS))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iSMS,musg_l)
+
+            else if(index(line,'oc') .gt. 0) then
+                call openMUSGFile('OC',line,musg_l.Prefix,musg_l.iOC,musg_l.FNameOC)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameOC(:len_trim(musg_l.FNameOC))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iOC,musg_l)
                 call MUSG_GetOutputTimesFromOC(musg_l)
 
-            else if(index(line,'DATA(BINARY)') .gt. 0) then
+            else if(index(line,'rch') .gt. 0) then
+                call openMUSGFile('RCH',line,musg_l.Prefix,musg_l.iRCH,musg_l.FNameRCH)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameRCH(:len_trim(musg_l.FNameRCH))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iRCH,musg_l)
+
+            else if(index(line,'riv') .gt. 0) then
+                call openMUSGFile('RIV',line,musg_l.Prefix,musg_l.iRIV,musg_l.FNameRIV)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameRIV(:len_trim(musg_l.FNameRIV))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iRIV,musg_l)
+
+            else if(index(line,'wel') .gt. 0) then
+                call openMUSGFile('WEL',line,musg_l.Prefix,musg_l.iWEL,musg_l.FNameWEL)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameWEL(:len_trim(musg_l.FNameWEL))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iWEL,musg_l)
+                
+            else if(index(line,'chd') .gt. 0) then
+                call openMUSGFile('CHD',line,musg_l.Prefix,musg_l.iCHD,musg_l.FNameCHD)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameCHD(:len_trim(musg_l.FNameCHD))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iCHD,musg_l)
+                
+            else if(index(line,'evt') .gt. 0) then
+                call openMUSGFile('EVT',line,musg_l.Prefix,musg_l.iEVT,musg_l.FNameEVT)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameEVT(:len_trim(musg_l.FNameEVT))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iEVT,musg_l)
+
+
+            else if(index(line,'drn') .gt. 0) then
+                call openMUSGFile('DRN',line,musg_l.Prefix,musg_l.iDRN,musg_l.FNameDRN)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameDRN(:len_trim(musg_l.FNameDRN))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iDRN,musg_l)
+ 
+            else if(index(line,'lpf') .gt. 0) then
+                call openMUSGFile('LPF',line,musg_l.Prefix,musg_l.iLPF,musg_l.FNameLPF)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameLPF(:len_trim(musg_l.FNameLPF))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iLPF,musg_l)
+                
+                
+
+            else if(index(line,'data(binary)') .gt. 0) then
                 if(index(line,'.hds') .gt. 0) then
-                    call Msg(' ')
-                    call Msg('---------------DATA(BINARY).hds file postprocessing ')
-                    l1=len_trim(musg_l.Prefix)
-                    l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                    musg_l.FNameHDS=line(l1:)
-                    inquire(file=musg_l.FNameHDS,exist=FileExists)
-                    if(.not. FileExists) then
-                        call ErrMsg('No file found: '//musg_l.FNameHDS)
-                    endif
-                    call Msg('Modflow HDS file: '//musg_l.FNameHDS)
-	                call getunit(musg_l.iHDS)
-                    open(musg_l.iHDS,file=musg_l.FNameHDS,status='old',form='binary',action='read')
-            
+                    call openBinaryMUSGFile('HDS',line,musg_l.Prefix,musg_l.iHDS,musg_l.FNameHDS)
                     call MUSG_ReadBinaryHeadFile(musg_l)
                 
                 else if(index(line,'.ddn') .gt. 0) then
-                    call Msg(' ')
-                    call Msg('---------------DATA(BINARY).ddn file postprocessing ')
-                    l1=len_trim(musg_l.Prefix)
-                    l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                    musg_l.FNameDDN=line(l1:)
-                    inquire(file=musg_l.FNameDDN,exist=FileExists)
-                    if(.not. FileExists) then
-                        call ErrMsg('No file found: '//musg_l.FNameDDN)
-                    endif
-                    call Msg('Modflow DDN file: '//musg_l.FNameDDN)
-	                call getunit(musg_l.iDDN)
-                    open(musg_l.iDDN,file=musg_l.FNameDDN,status='old',form='binary',action='read')
-            
+                    call openBinaryMUSGFile('DDN',line,musg_l.Prefix,musg_l.iDDN,musg_l.FNameDDN)
                     call MUSG_ReadBinaryDrawdownFile(musg_l)
-                    call MUSG_ToTecplot(musg_l)
+                    call MUSG_GWF_ToTecplot(musg_l)
+                    !call MUSG_CLN_ToTecplot(musg_l)
 
                 else if(index(line,'.cbb') .gt. 0) then
-                    call Msg(' ')
-                    call Msg('---------------DATA(BINARY).cbb file postprocessing ')
-                    l1=len_trim(musg_l.Prefix)
-                    l1=index(line,musg_l.Prefix(:len_trim(musg_l.Prefix)))-1
-                    musg_l.FNameCBB=line(l1:)
-                    inquire(file=musg_l.FNameCBB,exist=FileExists)
-                    if(.not. FileExists) then
-                        call ErrMsg('No file found: '//musg_l.FNameCBB)
-                    endif
-                    call Msg('Modflow CBB file: '//musg_l.FNameCBB)
-	                call getunit(musg_l.iCBB)
+                    call openBinaryMUSGFile('CBB',line,musg_l.Prefix,musg_l.iCBB,musg_l.FNameCBB)
                     open(musg_l.iCBB,file=musg_l.FNameCBB,status='old',form='binary',action='read')
-                    
                     call MUSG_ReadBinaryCbbFile(musg_l)
                     call MUSG_CBBToTecplot(musg_l)
+                
+                else if(index(line,'.cbcln') .gt. 0) then
+                    call openBinaryMUSGFile('CBCCLN',line,musg_l.Prefix,musg_l.iCBCCLN,musg_l.FNameCBCCLN)
+                    open(musg_l.iCBCCLN,file=musg_l.FNameCBCCLN,status='old',form='binary',action='read')
+                    !call MUSG_ReadBinaryCBCCLNFile(musg_l)
+                    !call MUSG_CBCCLNToTecplot(musg_l)
                 endif
 
+            else if(index(line,'cln') .gt. 0) then
+                call openMUSGFile('CLN',line,musg_l.Prefix,musg_l.iCLN,musg_l.FNameCLN)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameCLN(:len_trim(musg_l.FNameCLN))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iCLN,musg_l)
+                
+            else if(index(line,'gnc') .gt. 0 .or. index(line,'gnc') .gt. 0) then
+                call openMUSGFile('GNC',line,musg_l.Prefix,musg_l.iGNC,musg_l.FNameGNC)
+
+                write(musg_l.iLEX,'(a)') 'Scanning: '//musg_l.FNameGNC(:len_trim(musg_l.FNameGNC))//'-----------------------------------------------------'
+                call MUSG_ScanFileToLexicon(musg_l.iGNC,musg_l)
             
             else
                 call Msg(' ')
@@ -503,9 +653,85 @@ module MUSG !
         
         end do
 
-
+        !open(musg_l.iLEX,file=musg_l.FNameLEX,status='unknown',form='formatted')
+        !write(musg_l.iLEX,'(a)') 'Scan file from project '//musg_l.prefix(:len_trim(musg_l.prefix))
+        write(musg_l.iLEX,'(a,i8,a)') 'Found ',musg_l.nKeyWord,' keywords'
+        !do i=1,musg_l.nKeyWord
+        !    write(musg_l.iLEX,'(a)',iostat=status) musg_l.KeyWord(i)
+        !end do
+        close(musg_l.iLEX)
         
-    end subroutine MUSG_ProcessFiles
+   end subroutine MUSG_ProcessFiles
+    
+
+   
+    subroutine openMUSGFile(FileType,line,prefix,iUnit,FName)
+        implicit none
+        
+        character(*) :: FileType
+        character(*) :: line
+        character(*) :: prefix
+        integer :: iUnit
+        character(*) :: FName
+        
+        call Msg(' ')
+        call Msg('---------------'//FileType(:len_trim(FileType))//' file postprocessing ')
+
+        l1=index(line,Prefix(:len_trim(Prefix)))-1
+
+        ! check for path string before prefix
+        if(line(l1:l1) .eq. '/' .or. line(l1:l1) .eq. '\') then
+            l1=l1-1
+            do
+                if(line(l1:l1) .eq. BLANK) exit
+                l1=l1-1
+            enddo   
+        endif    
+        FName=line(l1:)
+        inquire(file=FName,exist=FileExists)
+        if(.not. FileExists) then
+            call ErrMsg('No file found: '//FName)
+        endif
+        call Msg('Modflow '//FileType(:len_trim(FileType))//' file: '//FName)
+	    call getunit(iUnit)
+        open(iUnit,file=FName,status='unknown',form='formatted')  
+        
+    end subroutine openMUSGFile
+    
+    subroutine openBinaryMUSGFile(FileType,line,prefix,iUnit,FName)
+        implicit none
+        
+        character(*) :: FileType
+        character(*) :: line
+        character(*) :: prefix
+        integer :: iUnit
+        character(*) :: FName
+        
+        call Msg(' ')
+        call Msg('---------------'//FileType(:len_trim(FileType))//' file postprocessing ')
+
+        l1=index(line,Prefix(:len_trim(Prefix)))-1
+
+        ! check for path string before prefix
+        if(line(l1:l1) .eq. '/' .or. line(l1:l1) .eq. '\') then
+            l1=l1-1
+            do
+                if(line(l1:l1) .eq. BLANK .or. line(l1:l1) .eq. TAB ) exit
+                !write(*,*) ichar(line(l1:l1)), line(l1:l1)
+                l1=l1-1
+            enddo   
+        endif    
+        FName=line(l1+1:)
+        inquire(file=FName,exist=FileExists)
+        if(.not. FileExists) then
+            call ErrMsg('No file found: '//FName)
+        endif
+        call Msg('Modflow '//FileType(:len_trim(FileType))//' file: '//FName)
+	    call getunit(iUnit)
+        open(iUnit,file=FName,status='old',form='binary',action='read')  
+        
+    end subroutine openBinaryMUSGFile
+
     
     subroutine MUSG_GetOutputTimesFromOC(musg_l)
         implicit none
@@ -513,40 +739,130 @@ module MUSG !
         type (MUSG_Project) musg_l
         
         integer :: Fnum
-        
+        integer :: FNumStepPeriodTime
+        character(MAXSTRING) :: FNameStepPeriodTime   
+        integer :: ntime
+        integer :: iTStep
+        integer :: iPeriod
+        integer :: thisStep
+        integer :: thisPeriod
+        real(dr) :: TotalTime
      
-        character(4000) :: line
+        character(MAXSTRING) :: line
 
      
         FNum=musg_l.iOC
 
         do 
             read(FNum,'(a)',iostat=status) line
-            if(status /= 0) return
+            call lcase(line)
+            if(status /= 0) exit
+            
+            if(line(1:1).eq.'#') then
+                call Msg(line(:len_trim(line)))
+                cycle
+            endif
+
+            if(index(line,'atsa nptimes').ne. 0)  then  ! read output time array from adaptive timestepping information
+                call Msg('Use output time array from adaptive timestepping input')
+                l1=index(line,'atsa nptimes')+12
+                line=line(l1:)
+            
+                read(line,'(i5)') musg_l.ntime
+                allocate(musg_l.totim(musg_l.ntime))
+
+                read(FNum,*) (musg_l.totim(i),i=1,musg_l.ntime)
+                write(TMPStr,'(i5)') musg_l.ntime 
+                call Msg('Number of output times:'//TMPStr)
+                do i=1,musg_l.ntime 
+                    write(TMPStr,'(i5,f20.5)') i, musg_l.totim(i)
+                    call Msg(TMPStr)
+                end do
+                return
+                
+            endif
+        end do
+
+        call Msg('No adaptive timestepping input')
+
+        ! Not using ATSA so check for PERIOD STEP data 
+        rewind(FNum)
+        do 
+            read(FNum,'(a)',iostat=status) line
+            call lcase(line)
+            if(status /= 0) exit
             
             if(line(1:1).eq.'#') then
                 call Msg(line(:len_trim(line)))
                 cycle
             endif
             
-            if(index(line,'ATSA NPTIMES').ne. 0)  then
-                l1=index(line,'ATSA NPTIMES')+12
-                line=line(l1:)
-            endif
-            
-            read(line,'(i5)') musg_l.ntime
-            allocate(musg_l.totim(musg_l.ntime))
+            if(index(line,'period').ne. 0)  then ! create output time array from KSTP data
+                FNameStepPeriodTime=musg_l.MUTPrefix(:len_trim(musg_l.MUTPrefix))//'.StepPeriodTime'
+                call OpenAscii(FNumStepPeriodTime,FNameStepPeriodTime)
+                call Msg('Create output time array from PERIOD STEP data')
+                call Msg('using output time data from file: '//trim(FNameStepPeriodTime))
+                backspace(FNum)
+                musg_l.ntime=0
+                count: do
+                    read(FNum,'(a)',iostat=status) line
+                    call lcase(line)
+                    if(status /= 0) exit
+                    
+                    if(index(line,'period').ne. 0)  musg_l.ntime=musg_l.ntime+1
+                    
+                end do count
 
-            read(FNum,*) (musg_l.totim(i),i=1,musg_l.ntime)
-            write(TMPStr,'(i5)') musg_l.ntime 
-            call Msg('Number of output times:'//TMPStr)
-            do i=1,musg_l.ntime 
-                write(TMPStr,'(i5,f20.5)') i, musg_l.totim(i)
-                call Msg(TMPStr)
-            end do
-            
-            exit
+                write(TMPStr,'(i5)') musg_l.ntime 
+                call Msg('Number of output times:'//TMPStr)
+
+
+                
+                rewind(FNum)
+
+                
+                allocate(musg_l.totim(musg_l.ntime))
+                ntime=0
+                assign: do 
+                    read(FNum,'(a)',iostat=status) line
+                    call lcase(line)
+                    if(status /= 0) exit assign
+                    
+                    if(index(line,'period').ne. 0)  then
+                        line=line(index(line,'period')+7:)
+                        read(line,*) thisPeriod
+                        line=line(index(line,'step')+5:)
+                        read(line,*) thisStep
+                        
+                        StepPeriodTime: do
+                            read(FNumStepPeriodTime,*,iostat=status) iTStep, iPeriod, TotalTime
+                            if(status /= 0) exit StepPeriodTime
+                            
+                            !if (iPeriod .eq. 1000) then
+                            !    continue
+                            !endif
+                            
+                            if(iTStep .eq. thisStep .and. iPeriod .eq.  thisPeriod) then
+                                ntime=ntime+1
+                                musg_l.totim(ntime)=TotalTime
+                                write(TMPStr,'(i5,f20.5)') ntime, musg_l.totim(ntime)
+                                call Msg(TMPStr)
+                                cycle assign
+                            endif
+                            cycle 
+                        end do StepPeriodTime
+                        
+                    endif
+                end do assign
+            endif
         end do
+
+    
+        if(.not. allocated(musg_l.totim)) then
+            call ErrMsg('Could not find output time info in OC file')
+        endif
+            
+            
     end subroutine MUSG_GetOutputTimesFromOC
         
     subroutine MUSG_ReadBinaryHeadFile(musg_l)
@@ -568,9 +884,16 @@ module MUSG !
         
         type (MUSG_Project) musg_l
 
-        if(.not. musg_l.mesh.have_mesh) call ErrMsg('Must read mesh from GSF file first')
+        !if(.not. musg_l.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
         
-        allocate(musg_l.head(musg_l.mesh.nnode,musg_l.ntime))
+        allocate(musg_l.head(musg_l.gwf.nCell,musg_l.ntime))
+
+        ! temporary fill of cln head array
+        if(musg_l.cln.have_mesh) then
+            call Msg('*** Temporarily set cln head array = 9.999')
+            allocate(musg_l.clnhead(musg_l.cln.nCell,musg_l.ntime))
+            musg_l.clnhead(:,:)=9.999
+        end if
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
@@ -581,6 +904,7 @@ module MUSG !
         FNum=musg_l.iHDS
         do
           read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
+          write(*,*) kstp,kper,pertim,totim,text,nstrt,nend,ilay
           
           if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
           if(index(text,'cln').ne.0)then
@@ -597,7 +921,7 @@ module MUSG !
               read(FNum,end=9400) (musg_l.head(inode,ntime),inode=nstrt,nend)
               !write(*,*) totim,nstrt,musg_l.head(nstrt,ntime)
           end if
-          if(ilay==musg_l.mesh.nlay)then
+          if(ilay==musg_l.gwf.nLay)then
               ntime=ntime+1 
           endif
 
@@ -626,7 +950,14 @@ module MUSG !
         
         type (MUSG_Project) musg_l
 
-        allocate(musg_l.sat(musg_l.mesh.nnode,musg_l.ntime))
+        allocate(musg_l.sat(musg_l.gwf.nCell,musg_l.ntime))
+        
+        ! temporary fill of cln sat array
+        if(musg_l.cln.have_mesh) then
+            call Msg('*** Temporarily set cln sat array = .999')
+            allocate(musg_l.clnsat(musg_l.cln.nCell,musg_l.ntime))
+            musg_l.clnsat(:,:)=0.999
+        end if
 
         ntime=1
         FNum=musg_l.iDDN
@@ -647,7 +978,7 @@ module MUSG !
               read(FNum,err=9400,end=9400) (musg_l.sat(inode,ntime),inode=nstrt,nend)
               !write(*,*) totim,nstrt,musg_l.sat(nstrt,musg_l.ntime)
           end if
-          if(ilay==musg_l.mesh.nlay)then
+          if(ilay==musg_l.gwf.nLay)then
               ntime=ntime+1 
           endif
 
@@ -690,89 +1021,89 @@ module MUSG !
               
             if((NVAL.le.0)) go to 9300
             if(ICODE .gt. 0)then
-            if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                if(ntime .eq.1) allocate(musg_l.cbb_ja(NVAL,musg_l.ntime))
-                read(FNum,err=9400,end=9400) (musg_l.cbb_ja(I,ntime),I=1,NVAL)
-                !rmax=-1e20
-                !rmin=1e20
-                !do i=1,nval
-                !    rmax=max(rmax,musg_l.cbb_ja(I,ntime))
-                !    rmin=min(rmin,musg_l.cbb_ja(I,ntime))
-                !enddo
-                !write(*,*) text
-                !write(*,*) nval
-                !write(*,*) rmin
-                !write(*,*) rmax
-            else 
-                if(ntime .eq.1) THEN
-                    if(index(text,'STORAGE') .ne.0) then
-	                    allocate(musg_l.Cbb_STORAGE(NVAL,musg_l.ntime))
-                    else if(index(text,'CONSTANT HEAD') .ne.0) then
-	                    allocate(musg_l.Cbb_CONSTANT_HEAD(NVAL,musg_l.ntime))
-                    else if(index(text,'RECHARGE') .ne.0) then
-	                    allocate(musg_l.Cbb_RECHARGE(NVAL,musg_l.ntime))
-                    else if(index(text,'DRAINS') .ne.0) then
-	                    allocate(musg_l.Cbb_DRAINS(NVAL,musg_l.ntime))
-                    end if
-                endif  
+                if(index(TEXT,'FLOW JA FACE') .ne. 0) then
+                    if(ntime .eq.1) allocate(musg_l.cbb_ja(NVAL,musg_l.ntime))
+                    read(FNum,err=9400,end=9400) (musg_l.cbb_ja(I,ntime),I=1,NVAL)
+                    !rmax=-1e20
+                    !rmin=1e20
+                    !do i=1,nval
+                    !    rmax=max(rmax,musg_l.cbb_ja(I,ntime))
+                    !    rmin=min(rmin,musg_l.cbb_ja(I,ntime))
+                    !enddo
+                    !write(*,*) text
+                    !write(*,*) nval
+                    !write(*,*) rmin
+                    !write(*,*) rmax
+                else 
+                    if(ntime .eq.1) THEN
+                        if(index(text,'STORAGE') .ne.0) then
+	                        allocate(musg_l.Cbb_STORAGE(NVAL,musg_l.ntime))
+                        else if(index(text,'CONSTANT HEAD') .ne.0) then
+	                        allocate(musg_l.Cbb_CONSTANT_HEAD(NVAL,musg_l.ntime))
+                        else if(index(text,'RECHARGE') .ne.0) then
+	                        allocate(musg_l.Cbb_RECHARGE(NVAL,musg_l.ntime))
+                        else if(index(text,'DRAINS') .ne.0) then
+	                        allocate(musg_l.Cbb_DRAINS(NVAL,musg_l.ntime))
+                        end if
+                    endif  
 
-                if(index(text,'STORAGE') .ne.0) then
-                    read(FNum,err=9400,end=9400) (musg_l.Cbb_STORAGE(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,musg_l.Cbb_STORAGE(I,ntime))
-                    !    rmin=min(rmin,musg_l.Cbb_STORAGE(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else if(index(text,'CONSTANT HEAD') .ne.0) then
-                    read(FNum,err=9400,end=9400) (musg_l.Cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,musg_l.Cbb_CONSTANT_HEAD(I,ntime))
-                    !    rmin=min(rmin,musg_l.Cbb_CONSTANT_HEAD(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else if(index(text,'RECHARGE') .ne.0) then
-                    read(FNum,err=9400,end=9400) (musg_l.Cbb_RECHARGE(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,musg_l.Cbb_RECHARGE(I,ntime))
-                    !    rmin=min(rmin,musg_l.Cbb_RECHARGE(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else if(index(text,'DRAINS') .ne.0) then
-                    read(FNum,err=9400,end=9400) (musg_l.Cbb_DRAINS(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,musg_l.Cbb_DRAINS(I,ntime))
-                    !    rmin=min(rmin,musg_l.Cbb_DRAINS(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                end if
+                    if(index(text,'STORAGE') .ne.0) then
+                        read(FNum,err=9400,end=9400) (musg_l.Cbb_STORAGE(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,musg_l.Cbb_STORAGE(I,ntime))
+                        !    rmin=min(rmin,musg_l.Cbb_STORAGE(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'CONSTANT HEAD') .ne.0) then
+                        read(FNum,err=9400,end=9400) (musg_l.Cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,musg_l.Cbb_CONSTANT_HEAD(I,ntime))
+                        !    rmin=min(rmin,musg_l.Cbb_CONSTANT_HEAD(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'RECHARGE') .ne.0) then
+                        read(FNum,err=9400,end=9400) (musg_l.Cbb_RECHARGE(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,musg_l.Cbb_RECHARGE(I,ntime))
+                        !    rmin=min(rmin,musg_l.Cbb_RECHARGE(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'DRAINS') .ne.0) then
+                        read(FNum,err=9400,end=9400) (musg_l.Cbb_DRAINS(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,musg_l.Cbb_DRAINS(I,ntime))
+                        !    rmin=min(rmin,musg_l.Cbb_DRAINS(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    end if
                   
                   
-              endif
-          else if(ICODE .eq. -1) then
+                endif
+            else if(ICODE .eq. -1) then
                       call Msg( 'The budget data is written in the compact budget style.')
                       call Msg( 'Not supported yet.')
                       stop
-          end if
+            end if
 
 
 
@@ -799,6 +1130,7 @@ module MUSG !
 
         do 
             read(FNum,'(a)',iostat=status) line
+            call lcase(line)
             if(status /= 0) return
             
             if(line(1:1).eq.'#') then
@@ -806,14 +1138,14 @@ module MUSG !
                 cycle
             endif
             
-            if(index(line,'UNSTRUCTURED').ne. 0)  musg_l.UNSTRUCTURED=.true.
+            if(index(line,'unstructured').ne. 0)  musg_l.UNSTRUCTURED=.true.
             if(musg_l.UNSTRUCTURED) then
                 call Msg('Using UNSTRUCTURED grid')
             else
                 call Msg('Using STRUCTURED grid')
             endif
 
-            if(index(line,'FREE').ne. 0)  musg_l.FREE=.true.  
+            if(index(line,'free').ne. 0)  musg_l.FREE=.true.  
              if(musg_l.FREE) then
                 call Msg('Using FREE file format')
             else
@@ -821,7 +1153,7 @@ module MUSG !
             endif
            
             
-            if(index(line,'RICHARDS').ne. 0)  musg_l.RICHARDS=.true.
+            if(index(line,'richards').ne. 0)  musg_l.RICHARDS=.true.
              if(musg_l.RICHARDS) then
                 call Msg('Applying RICHARDS equation for variably-saturated flow')
             else
@@ -885,6 +1217,8 @@ module MUSG !
             else if(index(line,'MODEL LENGTH UNIT IS').gt.0) then
                 l1=index(line,'MODEL LENGTH UNIT IS')
                 musg_l.Lunits=line(l1+21:)
+                
+
                 continue
             else if(index(line,'VOLUMETRIC BUDGET FOR ENTIRE MODEL AT END OF TIME STEP').gt.0) then 
                 bline=0  
@@ -999,7 +1333,18 @@ module MUSG !
                 if(DoVars) then
                     l1=len_trim(var_line)
                     write(FNumTecplot,'(a)') var_line(:l1-1)
-                    write(FNumTecplot,*) 'zone t="'//trim(musg_l.FNameLIST)//'"'
+                    write(output_line,'(a)')  'zone t="'//trim(musg_l.FNameLIST)//'"'
+ 
+                    TMPStr=', AUXDATA TimeUnits = "'//musg_l.Tunits(:len_trim(musg_l.Tunits))//'"'
+                    l1=len_trim(output_line)+1
+                    write(output_line(l1:),'(a)')	TMPStr                 
+
+                    TMPStr=', AUXDATA LengthUnits = "'//musg_l.Lunits(:len_trim(musg_l.Lunits))//'"'
+                    l1=len_trim(output_line)+1
+                    write(output_line(l1:),'(a)')	TMPStr                 
+                    
+                    write(FNumTecplot,'(a)') output_line 
+
                     
                     DoVars=.false.
                 endif
@@ -1016,7 +1361,70 @@ module MUSG !
         end do 
     end subroutine MUSG_WriteVolumeBudgetToTecplot
     
-    subroutine MUSG_ToTecplot(musg_l)
+    subroutine MUSG_CreateStepPeriodTimeFile(musg_l)
+        implicit none
+
+        type (MUSG_Project) musg_l
+        
+        integer :: Fnum
+        integer :: FNumStepPeriodTime
+        character(MAXLBL) :: FNameStepPeriodTime
+        
+        
+        integer :: iTStep
+        integer :: iPeriod
+        real(dr) :: TotalTime
+        real(dr) :: dum1, dum2, dum3, dum4
+        
+        character(4000) :: line
+
+        FNum=musg_l.iLIST
+        rewind(FNum)
+
+        FNameStepPeriodTime=musg_l.MUTPrefix(:len_trim(musg_l.MUTPrefix))//'.StepPeriodTime'
+        call OpenAscii(FNumStepPeriodTime,FNameStepPeriodTime)
+        call Msg( 'Time step, stress period, time to file: '//trim(FNameStepPeriodTime))
+
+        do 
+            read(FNum,'(a)',iostat=status) line
+            if(status /= 0) return
+            
+            if(index(line,'TIME SUMMARY AT END OF TIME STEP').gt.0) then
+                line=line(index(line,'STEP')+5:)
+                read(line,*) iTStep
+                line=line(index(line,'PERIOD')+7:)
+                read(line,*) iPeriod
+                
+                loop: do
+                    read(FNum,'(a)',iostat=status) line
+                    if(status /= 0) return
+                    if(index(line,'TOTAL TIME').gt.0) then
+                        l1=index(line,'TOTAL TIME')
+                        if(index(musg_l.Tunits,'SECONDS').gt.0) then
+                            read(line(l1+10:),*) TotalTime
+                        elseif(index(musg_l.Tunits,'MINUTES').gt.0) then
+                            read(line(l1+10:),*) dum1, TotalTime
+                        elseif(index(musg_l.Tunits,'HOURS').gt.0) then
+                            read(line(l1+10:),*) dum1, dum2, TotalTime
+                        elseif(index(musg_l.Tunits,'DAYS').gt.0) then
+                            read(line(l1+10:),*) dum1, dum2, dum3, TotalTime
+                        elseif(index(musg_l.Tunits,'YEARS').gt.0) then
+                            read(line(l1+10:),*) dum1, dum2, dum3, dum4, TotalTime
+                        endif
+                        exit loop
+                    endif
+                end do loop
+                
+                write(FNumStepPeriodTime,*) iTStep, iPeriod, TotalTime
+
+            end if
+                
+
+        end do
+                
+    end subroutine MUSG_CreateStepPeriodTimeFile
+    
+    subroutine MUSG_GWF_ToTecplot(musg_l)
         implicit none
         type (MUSG_Project) musg_l
 
@@ -1024,7 +1432,7 @@ module MUSG !
         character(MAXLBL) :: FName
         integer :: i, j
 
-        if(.not. musg_l.mesh.have_mesh) then
+        if(.not. musg_l.gwf.have_mesh) then
 		    call ErrMsg('ERROR: no mesh information')
 		    stop
         endif
@@ -1038,39 +1446,95 @@ module MUSG !
 
         write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
         
-        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',musg_l.totim(1),',N=',musg_l.mesh.nvertex,', E=',musg_l.mesh.nnode,', datapacking=block, &
+        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',musg_l.totim(1),',N=',musg_l.gwf.nvertex,', E=',musg_l.gwf.nCell,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED)'
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (musg_l.mesh.x(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.x(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (musg_l.mesh.y(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.y(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (musg_l.mesh.z(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.z(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (musg_l.mesh.lay(i),i=1,musg_l.mesh.nnode)
+        write(FNum,'(5i8)') (musg_l.gwf.lay(i),i=1,musg_l.gwf.nCell)
         write(FNum,'(a)') '# head'
-        write(FNum,'(5e20.12)') (musg_l.head(i,1),i=1,musg_l.mesh.nnode)
+        write(FNum,'(5e20.12)') (musg_l.head(i,1),i=1,musg_l.gwf.nCell)
         write(FNum,'(a)') '# saturation'
-        write(FNum,'(5e20.12)') (musg_l.sat(i,1),i=1,musg_l.mesh.nnode)
+        write(FNum,'(5e20.12)') (musg_l.sat(i,1),i=1,musg_l.gwf.nCell)
         
-        do i=1,musg_l.mesh.nnode
-            write(FNum,'(8i8)') (musg_l.mesh.ivertex(j,i),j=1,musg_l.mesh.m)
+        do i=1,musg_l.gwf.nCell
+            write(FNum,'(8i8)') (musg_l.gwf.ivertex(j,i),j=1,musg_l.gwf.m)
         end do
        
         
         do j=2,musg_l.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',musg_l.totim(j),',N=',musg_l.mesh.nvertex,', E=',musg_l.mesh.nnode,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',musg_l.totim(j),',N=',musg_l.gwf.nvertex,', E=',musg_l.gwf.nCell,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             write(FNum,'(a)') '# head'
-            write(FNum,'(5e20.12)') (musg_l.head(i,j),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.head(i,j),i=1,musg_l.gwf.nCell)
             write(FNum,'(a)') '# sat'
-            write(FNum,'(5e20.12)') (musg_l.sat(i,j),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.sat(i,j),i=1,musg_l.gwf.nCell)
         enddo
         
         call FreeUnit(FNum)
 
-    end subroutine MUSG_ToTecplot
+    end subroutine MUSG_GWF_ToTecplot
+
+    subroutine MUSG_CLN_ToTecplot(musg_l)
+        implicit none
+        type (MUSG_Project) musg_l
+
+        integer :: Fnum
+        character(MAXLBL) :: FName
+        integer :: i, j
+
+        if(.not. musg_l.cln.have_mesh) then
+		    call ErrMsg('ERROR: no mesh information')
+		    stop
+        endif
+        
+        ! tecplot output file
+        FName=musg_l.MUTPrefix(:len_trim(musg_l.MUTPrefix))//'.'//musg_l.Prefix(:len_trim(musg_l.Prefix))//'.cln.HDS_DDN.tecplot.dat'
+        call OpenAscii(FNum,FName)
+        call Msg( 'To File: '//trim(FName))
+
+        write(FNum,*) 'Title = "'//musg_l.Prefix(:len_trim(musg_l.Prefix))//': CLN Heads and drawdown (saturation)"'
+
+        write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
+        
+        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',musg_l.totim(1),',N=',musg_l.cln.nvertex,', E=',musg_l.cln.nCell,', datapacking=block, &
+            zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED)'
+
+        write(FNum,'(a)') '# x'
+        write(FNum,'(5e20.12)') (musg_l.cln.x(i),i=1,musg_l.cln.nvertex)
+        write(FNum,'(a)') '# y'
+        write(FNum,'(5e20.12)') (musg_l.cln.y(i),i=1,musg_l.cln.nvertex)
+        write(FNum,'(a)') '# z'
+        write(FNum,'(5e20.12)') (musg_l.cln.z(i),i=1,musg_l.cln.nvertex)
+        write(FNum,'(a)') '# layer'
+        write(FNum,'(5i8)') (musg_l.cln.lay(i),i=1,musg_l.cln.nCell)
+        write(FNum,'(a)') '# head'
+        write(FNum,'(5e20.12)') (musg_l.clnhead(i,1),i=1,musg_l.cln.nCell)
+        write(FNum,'(a)') '# saturation'
+        write(FNum,'(5e20.12)') (musg_l.clnsat(i,1),i=1,musg_l.cln.nCell)
+        
+        do i=1,musg_l.cln.nCell
+            write(FNum,'(8i8)') (musg_l.cln.ivertex(j,i),j=1,musg_l.cln.m)
+        end do
+       
+        
+        do j=2,musg_l.ntime
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',musg_l.totim(j),',N=',musg_l.cln.nvertex,', E=',musg_l.cln.nCell,', datapacking=block, &
+            zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
+            write(FNum,'(a)') '# head'
+            write(FNum,'(5e20.12)') (musg_l.head(i,j),i=1,musg_l.cln.nCell)
+            write(FNum,'(a)') '# sat'
+            write(FNum,'(5e20.12)') (musg_l.sat(i,j),i=1,musg_l.cln.nCell)
+        enddo
+        
+        call FreeUnit(FNum)
+
+    end subroutine MUSG_CLN_ToTecplot
     
     subroutine MUSG_CBBToTecplot(musg_l)
         implicit none
@@ -1081,7 +1545,7 @@ module MUSG !
 
         integer :: i, j, nvar
 
-        if(.not. musg_l.mesh.have_mesh) then
+        if(.not. musg_l.gwf.have_mesh) then
 		    call ErrMsg('ERROR: no mesh information')
 		    stop
         endif
@@ -1114,7 +1578,7 @@ module MUSG !
         
         write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
             
-        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',musg_l.totim(1),',N=',musg_l.mesh.nvertex,', E=',musg_l.mesh.nnode,', datapacking=block, &
+        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',musg_l.totim(1),',N=',musg_l.gwf.nvertex,', E=',musg_l.gwf.nCell,', datapacking=block, &
             zonetype=febrick'
         
         CellCenteredSTR=', VARLOCATION=([4'
@@ -1129,52 +1593,52 @@ module MUSG !
         write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (musg_l.mesh.x(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.x(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (musg_l.mesh.y(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.y(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (musg_l.mesh.z(i),i=1,musg_l.mesh.nvertex)
+        write(FNum,'(5e20.12)') (musg_l.gwf.z(i),i=1,musg_l.gwf.nvertex)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (musg_l.mesh.lay(i),i=1,musg_l.mesh.nnode)
+        write(FNum,'(5i8)') (musg_l.gwf.lay(i),i=1,musg_l.gwf.nCell)
         if(allocated(musg_l.Cbb_STORAGE)) then
             write(FNum,'(a)') '# storage'
-            write(FNum,'(5e20.12)') (musg_l.Cbb_STORAGE(i,1),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.Cbb_STORAGE(i,1),i=1,musg_l.gwf.nCell)
         endif
         if(allocated(musg_l.Cbb_CONSTANT_HEAD)) then
             write(FNum,'(a)') '# constant head'
-            write(FNum,'(5e20.12)') (musg_l.Cbb_CONSTANT_HEAD(i,1),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.Cbb_CONSTANT_HEAD(i,1),i=1,musg_l.gwf.nCell)
         endif        
         if(allocated(musg_l.Cbb_DRAINS)) then
             write(FNum,'(a)') '# drains'
-            write(FNum,'(5e20.12)') (musg_l.Cbb_DRAINS(i,1),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.Cbb_DRAINS(i,1),i=1,musg_l.gwf.nCell)
         endif        
         if(allocated(musg_l.Cbb_RECHARGE)) then
             write(FNum,'(a)') '# recharge'
-            write(FNum,'(5e20.12)') (musg_l.Cbb_RECHARGE(i,1),i=1,musg_l.mesh.nnode)
+            write(FNum,'(5e20.12)') (musg_l.Cbb_RECHARGE(i,1),i=1,musg_l.gwf.nCell)
         endif        
         
-        do i=1,musg_l.mesh.nnode
-            write(FNum,'(8i8)') (musg_l.mesh.ivertex(j,i),j=1,musg_l.mesh.m)
+        do i=1,musg_l.gwf.nCell
+            write(FNum,'(8i8)') (musg_l.gwf.ivertex(j,i),j=1,musg_l.gwf.m)
         end do
        
         do j=2,musg_l.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',musg_l.totim(j),',N=',musg_l.mesh.nvertex,', E=',musg_l.mesh.nnode,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',musg_l.totim(j),',N=',musg_l.gwf.nvertex,', E=',musg_l.gwf.nCell,', datapacking=block, &
             zonetype=febrick,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             if(allocated(musg_l.Cbb_STORAGE)) then
                 write(FNum,'(a)') '# storage'
-                write(FNum,'(5e20.12)') (musg_l.Cbb_STORAGE(i,j),i=1,musg_l.mesh.nnode)
+                write(FNum,'(5e20.12)') (musg_l.Cbb_STORAGE(i,j),i=1,musg_l.gwf.nCell)
             endif
             if(allocated(musg_l.Cbb_CONSTANT_HEAD)) then
                 write(FNum,'(a)') '# constant head'
-                write(FNum,'(5e20.12)') (musg_l.Cbb_CONSTANT_HEAD(i,j),i=1,musg_l.mesh.nnode)
+                write(FNum,'(5e20.12)') (musg_l.Cbb_CONSTANT_HEAD(i,j),i=1,musg_l.gwf.nCell)
             endif        
             if(allocated(musg_l.Cbb_DRAINS)) then
                 write(FNum,'(a)') '# drains'
-                write(FNum,'(5e20.12)') (musg_l.Cbb_DRAINS(i,j),i=1,musg_l.mesh.nnode)
+                write(FNum,'(5e20.12)') (musg_l.Cbb_DRAINS(i,j),i=1,musg_l.gwf.nCell)
             endif        
             if(allocated(musg_l.Cbb_RECHARGE)) then
                 write(FNum,'(a)') '# recharge'
-                write(FNum,'(5e20.12)') (musg_l.Cbb_RECHARGE(i,j),i=1,musg_l.mesh.nnode)
+                write(FNum,'(5e20.12)') (musg_l.Cbb_RECHARGE(i,j),i=1,musg_l.gwf.nCell)
             endif        
         enddo
         
@@ -1207,33 +1671,221 @@ module MUSG !
             exit
         end do
 
-        read(itmp,*) musg_l.meshtype
-        read(itmp,*) musg_l.mesh.nnode, musg_l.mesh.nlay, musg_l.mesh.iz, musg_l.mesh.ic
-        read(itmp,*) musg_l.mesh.nvertex
-        allocate(musg_l.mesh.x(musg_l.mesh.nvertex),musg_l.mesh.y(musg_l.mesh.nvertex),musg_l.mesh.z(musg_l.mesh.nvertex), stat=ialloc)
-        call AllocChk(ialloc,'Read 3d grid node arrays')
-        musg_l.mesh.x = 0 ! automatic initialization
-        musg_l.mesh.y = 0 ! automatic initialization
-        musg_l.mesh.z = 0 ! automatic initialization
+        read(itmp,*) musg_l.gwf.meshtype
+        read(itmp,*) musg_l.gwf.nCell, musg_l.gwf.nLay, musg_l.gwf.iz, musg_l.gwf.ic
+        read(itmp,*) musg_l.gwf.nvertex
+        allocate(musg_l.gwf.x(musg_l.gwf.nvertex),musg_l.gwf.y(musg_l.gwf.nvertex),musg_l.gwf.z(musg_l.gwf.nvertex), stat=ialloc)
+        call AllocChk(ialloc,'gwf xyzvertex arrays')
+        musg_l.gwf.x = 0 ! automatic initialization
+        musg_l.gwf.y = 0 ! automatic initialization
+        musg_l.gwf.z = 0 ! automatic initialization
         
-        read(itmp,*) (musg_l.mesh.x(i),musg_l.mesh.y(i),musg_l.mesh.z(i),i=1,musg_l.mesh.nvertex)
+        read(itmp,*) (musg_l.gwf.x(i),musg_l.gwf.y(i),musg_l.gwf.z(i),i=1,musg_l.gwf.nvertex)
 
-        musg_l.mesh.m=8  ! hardwired for octree meshes 
-        allocate(musg_l.mesh.ivertex(musg_l.mesh.m,musg_l.mesh.nnode),stat=ialloc)
-        allocate(musg_l.mesh.xe(musg_l.mesh.nnode),musg_l.mesh.ye(musg_l.mesh.nnode),musg_l.mesh.ze(musg_l.mesh.nnode),musg_l.mesh.lay(musg_l.mesh.nnode),stat=ialloc)
-        call AllocChk(ialloc,'Read 3d grid element arrays')
-        musg_l.mesh.ivertex = 0 ! automatic initialization
-        do i=1,musg_l.mesh.nnode
-        read(itmp,*) i1,musg_l.mesh.xe(i),musg_l.mesh.ye(i),musg_l.mesh.ze(i),musg_l.mesh.lay(i),i2,(musg_l.mesh.ivertex(j,i),j=1,musg_l.mesh.m)
+        musg_l.gwf.m=8  ! hardwired for octree meshes 
+        allocate(musg_l.gwf.ivertex(musg_l.gwf.m,musg_l.gwf.nCell),stat=ialloc)
+        allocate(musg_l.gwf.xCell(musg_l.gwf.nCell),musg_l.gwf.yCell(musg_l.gwf.nCell),musg_l.gwf.zCell(musg_l.gwf.nCell),musg_l.gwf.lay(musg_l.gwf.nCell),stat=ialloc)
+        call AllocChk(ialloc,'gwf ivertex, xyzcell arrays')
+        musg_l.gwf.ivertex = 0 ! automatic initialization
+        do i=1,musg_l.gwf.nCell
+        read(itmp,*) i1,musg_l.gwf.xCell(i),musg_l.gwf.yCell(i),musg_l.gwf.zCell(i),musg_l.gwf.lay(i),i2,(musg_l.gwf.ivertex(j,i),j=1,musg_l.gwf.m)
         end do
 	    call freeunit(itmp)
         
-        musg_l.mesh.have_mesh=.true.
+        musg_l.gwf.have_mesh=.true.
 
 	    return
-   end subroutine MUSG_ReadGSF
+    end subroutine MUSG_ReadGSF
     
+    subroutine MUSG_ReadCLNGSF(musg_l)
+        implicit none
 
+        type (MUSG_Project) musg_l
+
+        integer :: i, j
+        
+        integer :: i1, i2
+        
+        itmp=musg_l.iCLNGSF
+        
+        ! read initial comment lines beginning with #
+        do 
+            read(itmp,'(a)') line
+            if(line(1:1).eq.'#') then
+                write(*,'(a)') line
+                cycle
+            endif
+            backspace(itmp)
+            exit
+        end do
+
+        read(itmp,*) musg_l.cln.meshtype
+        read(itmp,*) musg_l.cln.nCell, musg_l.cln.nLay, musg_l.cln.iz, musg_l.cln.ic
+        read(itmp,*) musg_l.cln.nvertex
+        allocate(musg_l.cln.x(musg_l.cln.nvertex),musg_l.cln.y(musg_l.cln.nvertex),musg_l.cln.z(musg_l.cln.nvertex), stat=ialloc)
+        call AllocChk(ialloc,'cln xyzvertex arrays')
+        musg_l.cln.x = 0 ! automatic initialization
+        musg_l.cln.y = 0 ! automatic initialization
+        musg_l.cln.z = 0 ! automatic initialization
+        
+        read(itmp,*) (musg_l.cln.x(i),musg_l.cln.y(i),musg_l.cln.z(i),i=1,musg_l.cln.nvertex)
+
+        musg_l.cln.m=2  ! correct for cln segments ?
+        allocate(musg_l.cln.ivertex(musg_l.cln.m,musg_l.cln.nCell),stat=ialloc)
+        allocate(musg_l.cln.xCell(musg_l.cln.nCell),musg_l.cln.yCell(musg_l.cln.nCell),musg_l.cln.zCell(musg_l.cln.nCell),musg_l.cln.lay(musg_l.cln.nCell),stat=ialloc)
+        call AllocChk(ialloc,'cln ivertex, xyzcell arrays')
+        musg_l.cln.ivertex = 0 ! automatic initialization
+        do i=1,musg_l.cln.nCell
+        read(itmp,*) i1,musg_l.cln.xCell(i),musg_l.cln.yCell(i),musg_l.cln.zCell(i),musg_l.cln.lay(i),i2,(musg_l.cln.ivertex(j,i),j=1,musg_l.cln.m)
+        end do
+	    call freeunit(itmp)
+        
+        musg_l.cln.have_mesh=.true.
+
+	    return
+    end subroutine MUSG_ReadCLNGSF
+   ! subroutine MUSG_ReadCLN(musg_l)
+   !     implicit none
+   !
+   !     type (MUSG_Project) musg_l
+   !
+   !     integer :: i, j
+   !     
+   !     integer :: i1, i2, iDum
+   !     
+   !     itmp=musg_l.iCLN
+   !     
+   !     ! read initial comment lines beginning with #
+   !     do 
+   !         read(itmp,'(a)') line
+   !         if(line(1:1).eq.'#') then
+   !             write(*,'(a)') line
+   !             cycle
+   !         endif
+   !         backspace(itmp)
+   !         exit
+   !     end do
+   !
+   !     read(itmp,*) iDum,musg_l.gwf.NCLN
+   !     read(itmp,'(a)') line
+   !     read(itmp,*) iDum,musg_l.gwf.NCLN
+   !     
+   !
+	  !  return
+   !end subroutine MUSG_ReadCLN
+
+   
+    subroutine MUSG_ScanFileToLexicon(FNum,musg_l)
+        implicit none
+
+        type (MUSG_Project) musg_l
+        
+        integer :: Fnum
+     
+        character(MAXSTRING) :: line
+        character(MAXSTRING) :: PossibleKey
+        
+        !integer :: ISTART, ISTOP, ICOL
+        !integer :: N
+        !real :: R
+        !integer IOUT
+        
+        !return
+    
+        do 
+            read(FNum,'(a)',iostat=status) line
+            call lcase(line)
+            if(status /= 0) exit
+            
+            if(line(1:1).eq.'#') then
+                call Msg(line(:len_trim(line)))
+                cycle
+            endif
+            
+            do i=1,len_trim(line)
+                !write(*,*) i,ichar(line(i:i))
+                if(ichar(line(i:i)) .ge. 42 .and. ichar(line(i:i)) .le. 57 .or. ichar(line(i:i)) .eq. 32) cycle
+                if(line(i:i) .eq. 'e' .or.  &
+                    line(i:i) .eq. 'd' .or.   &
+                    line(i:i) .eq. 'g') then
+                    if(line(i+1:i+1) .eq. '+' .or. line(i+1:i+1) .eq. '-') cycle
+                endif
+                if(i.eq.1) then
+                    PossibleKey=line(i:)
+                else
+                    PossibleKey=line(i-1:)
+                endif
+                call AddToLexicon(PossibleKey, musg_l)
+                exit
+            end do
+        end do
+        
+        rewind(FNum)    
+            
+    end subroutine MUSG_ScanFileToLexicon
+
+    subroutine AddToLexicon(PKey, musg_l)
+        implicit none
+        
+        
+        type (MUSG_Project) musg_l
+
+        character(*) :: PKey
+        
+        !if(musg_l.nKeyWord .gt. 0) then
+        !    if(musg_l.Keyword(musg_l.nKeyWord) .eq. PKey) then
+        !        !write(musg_l.iLEX,'(a)',iostat=status) 'Repeat: '// PKey(:len_trim(PKey))
+        !        return
+        !    end if
+        !end if
+        
+        musg_l.nKeyWord=musg_l.nKeyWord+1
+        if(musg_l.nKeyWord>musg_l.nDim) call GrowKeywordArray(musg_l,musg_l.nDim)
+        musg_l.Keyword(musg_l.nKeyWord)=PKey
+        write(musg_l.iLEX,'(a)',iostat=status) musg_l.Keyword(musg_l.nKeyWord)
+
+        
+        
+    end subroutine AddToLexicon
+    
+     subroutine GrowKeyWordArray(musg_l,ndim) !--- during run if necessary 
+        type (MUSG_Project) musg_l
+	    real, parameter :: nf_mult=2
+	    integer :: ndim_new
+	    integer :: ndim,i
+	    character(MAXSTRING), allocatable :: KeyWord_tmp(:) 
+
+	    ndim_new=nint(ndim*nf_mult)
+        write(*,*) 'ndim_new ', ndim_new
+
+	    allocate(Keyword_tmp(ndim_new), stat=ialloc)
+	    call AllocChk(ialloc,'allocate Keyword_tmp arrays')
+	    Keyword_tmp(:)=char(0)
+
+	    ! copy current data
+	    do i=1,ndim
+		    Keyword_tmp(i)	=	musg_l.Keyword(i)
+	    end do
+
+	    ! destroy arrays
+	    deallocate(musg_l.Keyword)
+	    ! reallocate
+	    allocate(musg_l.Keyword(ndim_new), stat=ialloc)
+	    call AllocChk(ialloc,'reallocate musg_l.Keyword arrays')
+	    musg_l.Keyword(:)=char(0)
+
+	    ! copy current data
+	    do i=1,ndim
+		    musg_l.Keyword(i)	=	Keyword_tmp(i)	
+	    end do
+
+	    ndim=ndim_new
+	    
+	    deallocate(Keyword_tmp)
+
+    end subroutine GrowKeyWordArray
+   
+    
 ! -------------------------------------------------------------------------------------------   
    subroutine MUSG_ReadAsciiHeadFile(FnumTG,musg_l)
         implicit none
@@ -1251,14 +1903,14 @@ module MUSG !
         call OpenAscii(FNum,FName)
         call Msg( 'Head file: '//FName)
 
-        allocate(musg_l.head(musg_l.mesh.nnode,1))
+        allocate(musg_l.head(musg_l.gwf.nCell,1))
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
 		    stop
         endif
         read(itmp,*) line
-	    read(itmp,*) (i1, musg_l.head(j,1),j=1,musg_l.mesh.nnode)
+	    read(itmp,*) (i1, musg_l.head(j,1),j=1,musg_l.gwf.nCell)
 	    call freeunit(FNum)
 
         continue
@@ -1286,25 +1938,25 @@ module MUSG !
         call OpenAscii(FNum,FName)
         call Msg( 'Kx file: '//FName)
 
-        allocate(musg_l.Kx(musg_l.mesh.nnode))
-        allocate(musg_l.Thick(musg_l.mesh.nnode))
-        allocate(musg_l.T(musg_l.mesh.nnode))
+        allocate(musg_l.Kx(musg_l.gwf.nCell))
+        allocate(musg_l.Thick(musg_l.gwf.nCell))
+        allocate(musg_l.T(musg_l.gwf.nCell))
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
 		    stop
         endif
-	    read(itmp,*) (musg_l.Kx(j),j=1,musg_l.mesh.nnode)
+	    read(itmp,*) (musg_l.Kx(j),j=1,musg_l.gwf.nCell)
 	    call freeunit(FNum)
         
-        do j=1,musg_l.mesh.nnode
+        do j=1,musg_l.gwf.nCell
             top=0.0
             bot=0.0
             do m=1,4
-                top=top+musg_l.mesh.z(musg_l.mesh.ivertex(m,j))/4.0d0
+                top=top+musg_l.gwf.z(musg_l.gwf.ivertex(m,j))/4.0d0
             end do
             do m=5,8
-                bot=bot+musg_l.mesh.z(musg_l.mesh.ivertex(m,j))/4.0d0
+                bot=bot+musg_l.gwf.z(musg_l.gwf.ivertex(m,j))/4.0d0
             end do
             
             if(j==3657) then
@@ -1347,13 +1999,13 @@ module MUSG !
         call OpenAscii(FNum,FName)
         call Msg( 'Ss file: '//FName)
 
-        allocate(musg_l.Ss(musg_l.mesh.nnode))
+        allocate(musg_l.Ss(musg_l.gwf.nCell))
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
 		    stop
         endif
-	    read(itmp,*) (musg_l.ss(j),j=1,musg_l.mesh.nnode)
+	    read(itmp,*) (musg_l.ss(j),j=1,musg_l.gwf.nCell)
 	    call freeunit(FNum)
 
         continue
@@ -1373,13 +2025,13 @@ module MUSG !
         call OpenAscii(FNum,FName)
         call Msg( 'Sy file: '//FName)
 
-        allocate(musg_l.Sy(musg_l.mesh.nnode))
+        allocate(musg_l.Sy(musg_l.gwf.nCell))
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
 		    stop
         endif
-	    read(itmp,*) (musg_l.Sy(j),j=1,musg_l.mesh.nnode)
+	    read(itmp,*) (musg_l.Sy(j),j=1,musg_l.gwf.nCell)
 	    call freeunit(FNum)
 
         continue
@@ -1399,13 +2051,13 @@ module MUSG !
         call OpenAscii(FNum,FName)
         call Msg( 'Vanis file: '//FName)
 
-        allocate(musg_l.Vanis(musg_l.mesh.nnode))
+        allocate(musg_l.Vanis(musg_l.gwf.nCell))
 
 	    if(status /= 0) then
 		    call ErrMsg('FILE ERROR: '//fname)
 		    stop
         endif
-	    read(itmp,*) (musg_l.Vanis(j),j=1,musg_l.mesh.nnode)
+	    read(itmp,*) (musg_l.Vanis(j),j=1,musg_l.gwf.nCell)
 	    call freeunit(FNum)
 
         continue
@@ -1493,7 +2145,7 @@ module MUSG !
                 write(FNum,'(a,i5,a,f20.4)') 'zone t= "Stress Period ',musg_l.StressPeriod(i),'", SOLUTIONTIME = ',musg_l.totim(musg_l.StressPeriod(i))
                 LastStressPeriod=musg_l.StressPeriod(i)
             endif
-            write(FNum,'(9f20.4,i8)') musg_l.mesh.xe(musg_l.RiverCell(i)),musg_l.mesh.ye(musg_l.RiverCell(i)),musg_l.mesh.ze(musg_l.RiverCell(i)), &
+            write(FNum,'(9f20.4,i8)') musg_l.gwf.xCell(musg_l.RiverCell(i)),musg_l.gwf.yCell(musg_l.RiverCell(i)),musg_l.gwf.zCell(musg_l.RiverCell(i)), &
                                     & musg_l.RiverFlow(i), &
                                     & musg_l.RiverHead(i), &
                                     & musg_l.RiverElev(i), &
@@ -2795,32 +3447,32 @@ module MUSG !
     !    do i=1, musg_l.nWellConst
     !        if(index(musg_l.NameWellConst(i),trim(WellID)) > 0) then
     !            
-    !            do j=1,musg_l.mesh.nnode/musg_l.mesh.nlay  ! loop over the cells in layer 1
-    !                if(musg_l.XWellConst(i) >= musg_l.mesh.X(Musg_l.mesh.ivertex(1,j)) .and. musg_l.XWellConst(i) <= musg_l.mesh.X(Musg_l.mesh.ivertex(4,j))) then
+    !            do j=1,musg_l.gwf.nCell/musg_l.gwf.nLay  ! loop over the cells in layer 1
+    !                if(musg_l.XWellConst(i) >= musg_l.gwf.X(Musg_l.gwf.ivertex(1,j)) .and. musg_l.XWellConst(i) <= musg_l.gwf.X(Musg_l.gwf.ivertex(4,j))) then
     !                
-    !                    if(musg_l.YWellConst(i) >= musg_l.mesh.Y(Musg_l.mesh.ivertex(1,j)) .and. musg_l.YWellConst(i) <= musg_l.mesh.Y(Musg_l.mesh.ivertex(2,j))) then
+    !                    if(musg_l.YWellConst(i) >= musg_l.gwf.Y(Musg_l.gwf.ivertex(1,j)) .and. musg_l.YWellConst(i) <= musg_l.gwf.Y(Musg_l.gwf.ivertex(2,j))) then
     !                        iCellCurr=j
-    !                        write(*,'(a,i8,3f15.3)') ' Cell x y z',iCellCurr, musg_l.mesh.Xe(iCellCurr), musg_l.mesh.ye(iCellCurr), musg_l.mesh.Ze(iCellCurr)
+    !                        write(*,'(a,i8,3f15.3)') ' Cell x y z',iCellCurr, musg_l.gwf.xCell(iCellCurr), musg_l.gwf.yCell(iCellCurr), musg_l.gwf.zCell(iCellCurr)
     !                        write(*,*) ' k, vertex(k), Xvertex(k), Yvertex(k), Zvertex(k)'
-    !                        do k=1,musg_l.mesh.m  
-    !                            write(*,'(i2,i8,3f15.3)') k, Musg_l.mesh.ivertex(k,iCellCurr),musg_l.mesh.X(Musg_l.mesh.ivertex(k,iCellCurr)),musg_l.mesh.Y(Musg_l.mesh.ivertex(k,iCellCurr)),musg_l.mesh.Z(Musg_l.mesh.ivertex(k,iCellCurr))
+    !                        do k=1,musg_l.gwf.m  
+    !                            write(*,'(i2,i8,3f15.3)') k, Musg_l.gwf.ivertex(k,iCellCurr),musg_l.gwf.X(Musg_l.gwf.ivertex(k,iCellCurr)),musg_l.gwf.Y(Musg_l.gwf.ivertex(k,iCellCurr)),musg_l.gwf.Z(Musg_l.gwf.ivertex(k,iCellCurr))
     !                        end do
     !                        pause
     !                        CurrTopElev=musg_l.TopElevWellConst(i)
-    !                        LayerLoop: do k=1,musg_l.mesh.nlay 
-    !                            if(CurrTopElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
-    !                                if(musg_l.BotElevWellConst(i) > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                        LayerLoop: do k=1,musg_l.gwf.nLay 
+    !                            if(CurrTopElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                                if(musg_l.BotElevWellConst(i) > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !                                    CellHeight=CurrTopElev-musg_l.BotElevWellConst(i)
     !                                    write(*,*) iCellCurr, CellHeight
     !                                    exit LayerLoop
     !                                else
-    !                                    CellHeight=CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+    !                                    CellHeight=CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
     !                                    write(*,*) iCellCurr, CellHeight
-    !                                    CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-    !                                    iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+    !                                    CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+    !                                    iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
     !                                endif
     !                            else
-    !                                iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+    !                                iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
     !                                
     !                            end if
     !                        end do LayerLoop
@@ -2944,34 +3596,34 @@ module MUSG !
             
             WellFound=.false.
                  
-            do j=1,musg_l.mesh.nnode/musg_l.mesh.nlay  ! loop over the cells in layer 1
-                if(musg_l.X_EIWell(i) >= musg_l.mesh.X(Musg_l.mesh.ivertex(1,j)) .and. musg_l.X_EIWell(i) <= musg_l.mesh.X(Musg_l.mesh.ivertex(4,j))) then
-                    if(musg_l.Y_EIWell(i) >= musg_l.mesh.Y(Musg_l.mesh.ivertex(1,j)) .and. musg_l.Y_EIWell(i) <= musg_l.mesh.Y(Musg_l.mesh.ivertex(2,j))) then
+            do j=1,musg_l.gwf.nCell/musg_l.gwf.nLay  ! loop over the cells in layer 1
+                if(musg_l.X_EIWell(i) >= musg_l.gwf.X(Musg_l.gwf.ivertex(1,j)) .and. musg_l.X_EIWell(i) <= musg_l.gwf.X(Musg_l.gwf.ivertex(4,j))) then
+                    if(musg_l.Y_EIWell(i) >= musg_l.gwf.Y(Musg_l.gwf.ivertex(1,j)) .and. musg_l.Y_EIWell(i) <= musg_l.gwf.Y(Musg_l.gwf.ivertex(2,j))) then
                         iCellCurr=j
                         WellFound=.true.
 
-                        write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', musg_l.mesh.Xe(iCellCurr), musg_l.mesh.Ye(iCellCurr)
+                        write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', musg_l.gwf.xCell(iCellCurr), musg_l.gwf.yCell(iCellCurr)
                         call Msg(TmpSTR)
 
-                        write(TmpSTR,'(a,2f15.3)') 'X range ', musg_l.mesh.X(Musg_l.mesh.ivertex(1,j)), musg_l.mesh.X(Musg_l.mesh.ivertex(4,j))
+                        write(TmpSTR,'(a,2f15.3)') 'X range ', musg_l.gwf.X(Musg_l.gwf.ivertex(1,j)), musg_l.gwf.X(Musg_l.gwf.ivertex(4,j))
                         call Msg(TmpSTR)
-                        write(TmpSTR,'(a,2f15.3)') 'Y range ', musg_l.mesh.Y(Musg_l.mesh.ivertex(1,j)), musg_l.mesh.Y(Musg_l.mesh.ivertex(2,j))
+                        write(TmpSTR,'(a,2f15.3)') 'Y range ', musg_l.gwf.Y(Musg_l.gwf.ivertex(1,j)), musg_l.gwf.Y(Musg_l.gwf.ivertex(2,j))
                         call Msg(TmpSTR)
 
                         
                         
                         call Msg(' Layer  Cell     Vertex         Z      Height')
-                        write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,musg_l.mesh.Z(Musg_l.mesh.ivertex(4,iCellCurr))
+                        write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,musg_l.gwf.Z(Musg_l.gwf.ivertex(4,iCellCurr))
                         call Msg(TmpSTR)
-                        CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(4,iCellCurr))
-                        do k=1,musg_l.mesh.nlay                             
-                            write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)),CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                        CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(4,iCellCurr))
+                        do k=1,musg_l.gwf.nLay                             
+                            write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)),CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                             call Msg(TmpSTR)
-                            if(k==musg_l.mesh.nlay) then
-                                MeshBottom= musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                            if(k==musg_l.gwf.nLay) then
+                                MeshBottom= musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                             endif
-                            CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                            iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                            CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                            iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                         end do
                         
                         iCellCurr=j
@@ -2982,8 +3634,8 @@ module MUSG !
                         CurrBotElev=CurrTopElev-musg_l.ScreenALength_EIWell(i)
                         CurrScreenLength=0.0d0
                         ScreenFound=.false.
-                        LayerLoop1: do k=1,musg_l.mesh.nlay 
-                            if(CurrTopElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+                        LayerLoop1: do k=1,musg_l.gwf.nLay 
+                            if(CurrTopElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
                                 if(.not. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                     ScreenFound=.true.
@@ -2991,7 +3643,7 @@ module MUSG !
                                     nCellList(nEIScreens)=0
                                     NameEIScreen(nEIScreens)=trim(musg_l.Name_EIWell(i))//'_A'
                                 end if
-                                if(CurrBotElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+                                if(CurrBotElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
                                     CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-CurrBotElev
@@ -3003,17 +3655,17 @@ module MUSG !
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                                     write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     call Msg(TmpSTR)
                                     CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     
-                                    CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                                    iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                                    CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                                    iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                                 endif
                             else
-                                iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
-                                if(iCellCurr > musg_l.mesh.nnode .and. ScreenFound) then
+                                iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
+                                if(iCellCurr > musg_l.gwf.nCell .and. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                 endif
                                     
@@ -3041,8 +3693,8 @@ module MUSG !
                         CurrScreenLength=0.0d0
                         ScreenFound=.false.
                         iCellCurr=j
-                        LayerLoop2: do k=1,musg_l.mesh.nlay 
-                            if(CurrTopElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+                        LayerLoop2: do k=1,musg_l.gwf.nLay 
+                            if(CurrTopElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
                                 if(.not. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                     ScreenFound=.true.
@@ -3050,7 +3702,7 @@ module MUSG !
                                     nCellList(nEIScreens)=0
                                     NameEIScreen(nEIScreens)=trim(musg_l.Name_EIWell(i))//'_B'
                                 endif
-                                if(CurrBotElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+                                if(CurrBotElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
@@ -3063,16 +3715,16 @@ module MUSG !
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                                     write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     call Msg(TmpSTR)
                                     CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
-                                    CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                                    iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                                    CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                                    iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                                 endif
                             else
-                                iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
-                                if(iCellCurr > musg_l.mesh.nnode .and. ScreenFound) then
+                                iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
+                                if(iCellCurr > musg_l.gwf.nCell .and. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                 endif
                                     
@@ -3383,34 +4035,34 @@ module MUSG !
             
             WellFound=.false.
                  
-            do j=1,musg_l.mesh.nnode/musg_l.mesh.nlay  ! loop over the cells in layer 1
-                if(musg_l.X_EIWell(i) >= musg_l.mesh.X(Musg_l.mesh.ivertex(1,j)) .and. musg_l.X_EIWell(i) <= musg_l.mesh.X(Musg_l.mesh.ivertex(4,j))) then
-                    if(musg_l.Y_EIWell(i) >= musg_l.mesh.Y(Musg_l.mesh.ivertex(1,j)) .and. musg_l.Y_EIWell(i) <= musg_l.mesh.Y(Musg_l.mesh.ivertex(2,j))) then
+            do j=1,musg_l.gwf.nCell/musg_l.gwf.nLay  ! loop over the cells in layer 1
+                if(musg_l.X_EIWell(i) >= musg_l.gwf.X(Musg_l.gwf.ivertex(1,j)) .and. musg_l.X_EIWell(i) <= musg_l.gwf.X(Musg_l.gwf.ivertex(4,j))) then
+                    if(musg_l.Y_EIWell(i) >= musg_l.gwf.Y(Musg_l.gwf.ivertex(1,j)) .and. musg_l.Y_EIWell(i) <= musg_l.gwf.Y(Musg_l.gwf.ivertex(2,j))) then
                         iCellCurr=j
                         WellFound=.true.
 
-                        write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', musg_l.mesh.Xe(iCellCurr), musg_l.mesh.Ye(iCellCurr)
+                        write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', musg_l.gwf.xCell(iCellCurr), musg_l.gwf.yCell(iCellCurr)
                         call Msg(TmpSTR)
 
-                        write(TmpSTR,'(a,2f15.3)') 'X range ', musg_l.mesh.X(Musg_l.mesh.ivertex(1,j)), musg_l.mesh.X(Musg_l.mesh.ivertex(4,j))
+                        write(TmpSTR,'(a,2f15.3)') 'X range ', musg_l.gwf.X(Musg_l.gwf.ivertex(1,j)), musg_l.gwf.X(Musg_l.gwf.ivertex(4,j))
                         call Msg(TmpSTR)
-                        write(TmpSTR,'(a,2f15.3)') 'Y range ', musg_l.mesh.Y(Musg_l.mesh.ivertex(1,j)), musg_l.mesh.Y(Musg_l.mesh.ivertex(2,j))
+                        write(TmpSTR,'(a,2f15.3)') 'Y range ', musg_l.gwf.Y(Musg_l.gwf.ivertex(1,j)), musg_l.gwf.Y(Musg_l.gwf.ivertex(2,j))
                         call Msg(TmpSTR)
 
                         
                         
                         call Msg(' Layer  Cell     Vertex         Z      Height')
-                        write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,musg_l.mesh.Z(Musg_l.mesh.ivertex(4,iCellCurr))
+                        write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,musg_l.gwf.Z(Musg_l.gwf.ivertex(4,iCellCurr))
                         call Msg(TmpSTR)
-                        CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(4,iCellCurr))
-                        do k=1,musg_l.mesh.nlay                             
-                            write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)),CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                        CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(4,iCellCurr))
+                        do k=1,musg_l.gwf.nLay                             
+                            write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)),CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                             call Msg(TmpSTR)
-                            if(k==musg_l.mesh.nlay) then
-                                MeshBottom= musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                            if(k==musg_l.gwf.nLay) then
+                                MeshBottom= musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                             endif
-                            CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                            iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                            CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                            iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                         end do
                         
                         iCellCurr=j
@@ -3421,8 +4073,8 @@ module MUSG !
                         CurrBotElev=CurrTopElev-musg_l.ScreenALength_EIWell(i)
                         CurrScreenLength=0.0d0
                         ScreenFound=.false.
-                        LayerLoop1: do k=1,musg_l.mesh.nlay 
-                            if(CurrTopElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+                        LayerLoop1: do k=1,musg_l.gwf.nLay 
+                            if(CurrTopElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
                                 if(.not. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                     ScreenFound=.true.
@@ -3430,7 +4082,7 @@ module MUSG !
                                     nCellList(nEIScreens)=0
                                     NameEIScreen(nEIScreens)=trim(musg_l.Name_EIWell(i))//'_A'
                                 end if
-                                if(CurrBotElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+                                if(CurrBotElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
                                     CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-CurrBotElev
@@ -3442,17 +4094,17 @@ module MUSG !
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                                     write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     call Msg(TmpSTR)
                                     CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     
-                                    CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                                    iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                                    CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                                    iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                                 endif
                             else
-                                iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
-                                if(iCellCurr > musg_l.mesh.nnode .and. ScreenFound) then
+                                iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
+                                if(iCellCurr > musg_l.gwf.nCell .and. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                 endif
                                     
@@ -3480,8 +4132,8 @@ module MUSG !
                         CurrScreenLength=0.0d0
                         ScreenFound=.false.
                         iCellCurr=j
-                        LayerLoop2: do k=1,musg_l.mesh.nlay 
-                            if(CurrTopElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+                        LayerLoop2: do k=1,musg_l.gwf.nLay 
+                            if(CurrTopElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
                                 if(.not. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                     ScreenFound=.true.
@@ -3489,7 +4141,7 @@ module MUSG !
                                     nCellList(nEIScreens)=0
                                     NameEIScreen(nEIScreens)=trim(musg_l.Name_EIWell(i))//'_B'
                                 endif
-                                if(CurrBotElev > musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+                                if(CurrBotElev > musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
@@ -3502,16 +4154,16 @@ module MUSG !
 
                                     nCellList(nEIScreens)=nCellList(nEIScreens)+1  
                                     CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
+                                    CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
                                     write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
                                     call Msg(TmpSTR)
                                     CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
-                                    CurrTopElev=musg_l.mesh.Z(Musg_l.mesh.ivertex(8,iCellCurr))
-                                    iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
+                                    CurrTopElev=musg_l.gwf.Z(Musg_l.gwf.ivertex(8,iCellCurr))
+                                    iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
                                 endif
                             else
-                                iCellCurr=iCellCurr+musg_l.mesh.nnode/musg_l.mesh.nlay
-                                if(iCellCurr > musg_l.mesh.nnode .and. ScreenFound) then
+                                iCellCurr=iCellCurr+musg_l.gwf.nCell/musg_l.gwf.nLay
+                                if(iCellCurr > musg_l.gwf.nCell .and. ScreenFound) then
                                     nEIScreens=nEIScreens+1
                                 endif
                                     
@@ -4334,7 +4986,8 @@ module MUSG !
 
 
     end subroutine MUSG_PEST_RTWellOptimization
-
+    
 
 
     end module MUSG
+

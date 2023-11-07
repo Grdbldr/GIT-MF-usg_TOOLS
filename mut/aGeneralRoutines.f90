@@ -4055,6 +4055,7 @@ module GeneralRoutines    !### bit setting routines
     character(1), parameter :: FSLASH='/'
     character(1), parameter :: BSLASH='\'
     character(1), parameter :: UNDERSCORE='_'
+    character(1), parameter :: TAB=char(9)
     character(1) :: DateDelim
 
     character(512) :: TmpSTR
@@ -4106,7 +4107,7 @@ module GeneralRoutines    !### bit setting routines
 
     !------------------------------------------------------------------------ General declarations
     integer :: ncount
-    character(5) :: MUTVersion=' 1.02'
+    character(5) :: MUTVersion=' 1.03'
 
     !------------------------------------------------------------------------ HGS domain coupling scheme types
 	integer :: multi = 1
@@ -4398,6 +4399,7 @@ module GeneralRoutines    !### bit setting routines
             write(*,*) 'Enter a prefix for a '//ext//' file: '
             read(*,'(a)',iostat=status) prefix
             if(status /= 0) then
+                CALL execute_command_line('dir' ) 
                 write(*,*) 'Stopping MUT'
                 stop
             endif
@@ -5559,5 +5561,167 @@ module GeneralRoutines    !### bit setting routines
         GO TO 10
 
     END SUBROUTINE INDEXX_char
+    
+    
+    SUBROUTINE URWORD(LINE,ICOL,ISTART,ISTOP,NCODE,N,R,IOUT,IN)
+!     ******************************************************************
+!     ROUTINE TO EXTRACT A WORD FROM A LINE OF TEXT, AND OPTIONALLY
+!     CONVERT THE WORD TO A NUMBER.
+!        ISTART AND ISTOP WILL BE RETURNED WITH THE STARTING AND
+!          ENDING CHARACTER POSITIONS OF THE WORD.
+!        THE LAST CHARACTER IN THE LINE IS SET TO BLANK SO THAT IF ANY
+!          PROBLEMS OCCUR WITH FINDING A WORD, ISTART AND ISTOP WILL
+!          POINT TO THIS BLANK CHARACTER.  THUS, A WORD WILL ALWAYS BE
+!          RETURNED UNLESS THERE IS A NUMERIC CONVERSION ERROR.  BE SURE
+!          THAT THE LAST CHARACTER IN LINE IS NOT AN IMPORTANT CHARACTER
+!          BECAUSE IT WILL ALWAYS BE SET TO BLANK.
+!        A WORD STARTS WITH THE FIRST CHARACTER THAT IS NOT A SPACE OR
+!          COMMA, AND ENDS WHEN A SUBSEQUENT CHARACTER THAT IS A SPACE
+!          OR COMMA.  NOTE THAT THESE PARSING RULES DO NOT TREAT TWO
+!          COMMAS SEPARATED BY ONE OR MORE SPACES AS A NULL WORD.
+!        FOR A WORD THAT BEGINS WITH "'", THE WORD STARTS WITH THE
+!          CHARACTER AFTER THE QUOTE AND ENDS WITH THE CHARACTER
+!          PRECEDING A SUBSEQUENT QUOTE.  THUS, A QUOTED WORD CAN
+!          INCLUDE SPACES AND COMMAS.  THE QUOTED WORD CANNOT CONTAIN
+!          A QUOTE CHARACTER.
+!        IF NCODE IS 1, THE WORD IS CONVERTED TO UPPER CASE.
+!        IF NCODE IS 2, THE WORD IS CONVERTED TO AN INTEGER.
+!        IF NCODE IS 3, THE WORD IS CONVERTED TO A REAL NUMBER.
+!        NUMBER CONVERSION ERROR IS WRITTEN TO UNIT IOUT IF IOUT IS
+!          POSITIVE; ERROR IS WRITTEN TO DEFAULT OUTPUT IF IOUT IS 0;
+!          NO ERROR MESSAGE IS WRITTEN IF IOUT IS NEGATIVE.
+!     ******************************************************************
+!
+!        SPECIFICATIONS:
+!     ------------------------------------------------------------------
+      CHARACTER*(*) LINE
+      CHARACTER*20 STRING
+      CHARACTER*30 RW
+      CHARACTER*1 TAB
+      
+      integer :: LINLEN, ISTART, ISTOP, ICOL
+      integer :: NCODE, IDIFF
+      integer :: L, N
+      real :: R
+      integer IOUT, IN
+
+      
+!     ------------------------------------------------------------------
+      TAB=CHAR(9)
+!
+!1------Set last char in LINE to blank and set ISTART and ISTOP to point
+!1------to this blank as a default situation when no word is found.  If
+!1------starting location in LINE is out of bounds, do not look for a
+!1------word.
+      LINLEN=LEN_trim(LINE)
+      LINE(LINLEN:LINLEN)=' '
+      ISTART=LINLEN
+      ISTOP=LINLEN
+      LINLEN=LINLEN-1
+      IF(ICOL.LT.1 .OR. ICOL.GT.LINLEN) GO TO 100
+!
+!2------Find start of word, which is indicated by first character that
+!2------is not a blank, a comma, or a tab.
+      DO 10 I=ICOL,LINLEN
+      IF(LINE(I:I).NE.' ' .AND. LINE(I:I).NE.',' &
+         .AND. LINE(I:I).NE.TAB) GO TO 20
+10    CONTINUE
+      ICOL=LINLEN+1
+      GO TO 100
+!
+!3------Found start of word.  Look for end.
+!3A-----When word is quoted, only a quote can terminate it.
+20    IF(LINE(I:I).EQ.'''') THEN
+         I=I+1
+         IF(I.LE.LINLEN) THEN
+            DO 25 J=I,LINLEN
+            IF(LINE(J:J).EQ.'''') GO TO 40
+25          CONTINUE
+         END IF
+!
+!3B-----When word is not quoted, space, comma, or tab will terminate.
+      ELSE
+         DO 30 J=I,LINLEN
+         IF(LINE(J:J).EQ.' ' .OR. LINE(J:J).EQ.',' &
+         .OR. LINE(J:J).EQ.TAB) GO TO 40
+30       CONTINUE
+      END IF
+!
+!3C-----End of line without finding end of word; set end of word to
+!3C-----end of line.
+      J=LINLEN+1
+!
+!4------Found end of word; set J to point to last character in WORD and
+!-------set ICOL to point to location for scanning for another word.
+40    ICOL=J+1
+      J=J-1
+      IF(J.LT.I) GO TO 100
+      ISTART=I
+      ISTOP=J
+!
+!5------Convert word to upper case and RETURN if NCODE is 1.
+      IF(NCODE.EQ.1) THEN
+         IDIFF=ICHAR('a')-ICHAR('A')
+         DO 50 K=ISTART,ISTOP
+            IF(LINE(K:K).GE.'a' .AND. LINE(K:K).LE.'z') &
+                  LINE(K:K)=CHAR(ICHAR(LINE(K:K))-IDIFF)
+50       CONTINUE
+         RETURN
+      END IF
+!
+!6------Convert word to a number if requested.
+100   IF(NCODE.EQ.2 .OR. NCODE.EQ.3) THEN
+         RW=' '
+         L=30-ISTOP+ISTART
+         IF(L.LT.1) GO TO 200
+         RW(L:30)=LINE(ISTART:ISTOP)
+         IF(NCODE.EQ.2) READ(RW,'(I30)',ERR=200) N
+         IF(NCODE.EQ.3) READ(RW,'(F30.0)',ERR=200) R
+      END IF
+      RETURN
+!
+!7------Number conversion error.
+200   IF(NCODE.EQ.3) THEN
+         STRING= 'A REAL NUMBER'
+         L=13
+      ELSE
+         STRING= 'AN INTEGER'
+         L=10
+      END IF
+!
+!7A-----If output unit is negative, set last character of string to 'E'.
+      IF(IOUT.LT.0) THEN
+         N=0
+         R=0.
+         LINE(LINLEN+1:LINLEN+1)='E'
+         RETURN
+!
+!7B-----If output unit is positive; write a message to output unit.
+      ELSE IF(IOUT.GT.0) THEN
+         IF(IN.GT.0) THEN
+            WRITE(IOUT,201) IN,LINE(ISTART:ISTOP),STRING(1:L),LINE
+         ELSE
+            WRITE(IOUT,202) LINE(ISTART:ISTOP),STRING(1:L),LINE
+         END IF
+201      FORMAT(1X,/1X,'FILE UNIT ',I4,' : ERROR CONVERTING "',A, &
+            '" TO ',A,' IN LINE:',/1X,A)
+202      FORMAT(1X,/1X,'KEYBOARD INPUT : ERROR CONVERTING "',A,    &
+            '" TO ',A,' IN LINE:',/1X,A)
+!
+!7C-----If output unit is 0; write a message to default output.
+      ELSE
+         IF(IN.GT.0) THEN
+            WRITE(*,201) IN,LINE(ISTART:ISTOP),STRING(1:L),LINE
+         ELSE
+            WRITE(*,202) LINE(ISTART:ISTOP),STRING(1:L),LINE
+         END IF
+      END IF
+!
+!7D-----STOP after writing message.
+      stop('URWORD forced stop')
+      END subroutine urword
+
+
+
 
 end module GeneralRoutines

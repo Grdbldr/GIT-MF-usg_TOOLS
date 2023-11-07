@@ -52,6 +52,7 @@
 		<File RelativePath=".\fem.f90"/>
 		<File RelativePath=".\Modflow_USG.f90"/>
 		<File RelativePath=".\pre.f90"/>
+		<File RelativePath=".\raster.f90"/>
 		<File RelativePath=".\Tecplot.f90"/>
 		<File RelativePath=".\TGModule.f90"/></Filter></Files>
 	<Globals/></VisualStudioProject>
