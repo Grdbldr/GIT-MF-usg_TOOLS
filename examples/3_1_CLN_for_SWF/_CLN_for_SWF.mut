@@ -1,0 +1,13 @@
+! stopwatch
+! 1
+! mut
+
+modflow_usg
+
+ process modflow files
+ swf1    
+
+end
+! 
+! elapsed time
+! 1

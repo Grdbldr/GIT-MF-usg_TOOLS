@@ -1,0 +1,15 @@
+# MODFLOW-USG name file written by Groundwater Vistas
+#xll:0.000000; yll:0.000000; rotation:0.000000;
+LIST 7 Hazen1.lst
+BAS6  1 Hazen1.bas
+SMS  19 Hazen1.sms
+DISU  29 Hazen1.dis
+OC  22 Hazen1.oc
+WEL  149 Hazen1.wel
+CHD  23 Hazen1.chd
+LPF 11 Hazen1.lpf
+CLN 26 Hazen1.cln
+DATA(BINARY) 144  Hazen1.cbcln
+DATA(BINARY) 50 Hazen1.cbb
+DATA(BINARY) 30 Hazen1.hds
+DATA(BINARY) 31 Hazen1.ddn

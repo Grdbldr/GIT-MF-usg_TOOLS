@@ -1,0 +1,315 @@
+                                  USG-TRANSPORT USG-TRANSPORT 
+       FURTHER  DEVELOPMENTS BASED ON MODFLOW-USG
+                      VERSION USG-TRANSPORT VERSION 2.02.0
+
+ LIST FILE: swf1.lst
+                         UNIT    7
+
+ OPENING swf1.bas
+ FILE TYPE:BAS6   UNIT    1   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.sms
+ FILE TYPE:SMS   UNIT   19   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.dis
+ FILE TYPE:DISU   UNIT   29   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.oc
+ FILE TYPE:OC   UNIT   22   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.chd
+ FILE TYPE:CHD   UNIT   23   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.lpf
+ FILE TYPE:LPF   UNIT   11   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.swf
+ FILE TYPE:SWF   UNIT   65   STATUS:OLD    
+ FORMAT:FORMATTED              ACCESS:SEQUENTIAL          
+
+ OPENING swf1.gwf.cbb
+ FILE TYPE:DATA(BINARY)   UNIT   50   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ OPENING swf1.gwf.hds
+ FILE TYPE:DATA(BINARY)   UNIT   30   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ OPENING swf1.gwf.ddn
+ FILE TYPE:DATA(BINARY)   UNIT   31   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ OPENING swf1.swf.cbb
+ FILE TYPE:DATA(BINARY)   UNIT  144   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ OPENING swf1.swf.hds
+ FILE TYPE:DATA(BINARY)   UNIT  145   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ OPENING swf1.swf.ddn
+ FILE TYPE:DATA(BINARY)   UNIT  146   STATUS:UNKNOWN
+ FORMAT:UNFORMATTED            ACCESS:STREAM              
+
+ BAS -- BASIC PACKAGEUSG-TRANSPORT USG-TRANSPORT VERSION 2.02.0             INPUT READ FROM UNIT    1
+ 
+ # MODFLOW-USGs Basic Package                                                    
+ # MODFLOW Data Set Created by Groundwater Vistas                                
+ #
+ THE FREE FORMAT OPTION HAS BEEN SELECTED
+ THE UNSTRUCTURED GRID OPTION HAS BEEN SELECTED
+
+ DIS -- UNSTRUCTURED GRID DISCRETIZATION PACKAGE, VERSION 1 : 5/17/2010 - INPUT READ FROM UNIT   29
+        101 NODES         1 NLAY       301 NJAG  VERT. SUBDISCRETIZATION INDEX, IVSD = -1
+ INDEX FOR INPUT OF UNSTRUCTURED, FINITE-VOLUME CONNECTIVITY INFORMATION, IDSYMRD =   0
+    1 STRESS PERIOD(S) IN SIMULATION
+ MODEL TIME UNIT IS SECONDS
+ MODEL LENGTH UNIT IS METERS
+  Confining bed flag for each layer:
+   0
+
+ SWF -- SURFACE WATER FLOW (SWF) DISCRETIZATION PROCESS, VERSION 1, 10/1/2023 INPUT READ FROM UNIT   65
+ # GRAVITY 9.81  VISCOSITY 1.0E-6   ! dimension & output options & G/V
+
+
+
+                                 IA
+ READING ON UNIT   65 WITH FORMAT: (FREE)              
+
+
+
+                                 JA
+ READING ON UNIT   65 WITH FORMAT: (FREE)              
+
+ DIS -- UNSTRUCTURED GRID DISCRETIZATION PACKAGE, VERSION 1 : 5/17/2010 - INPUT READ FROM UNIT   29
+
+   NO. OF NODES PER LAYER =       101
+
+
+
+                                TOP FOR LAYER   1
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+                                BOT FOR LAYER   1
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+                               AREA FOR LAYER   1
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+                                 IA
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+                                 JA
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+               CONNECTION LENGTH 12 FOR LAYER   1
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+
+                 PERPENDICULAR AREA
+ READING ON UNIT   29 WITH FORMAT: (FREE)              
+
+
+ STRESS PERIOD     LENGTH       TIME STEPS     MULTIPLIER FOR DELT    SS FLAG
+ ----------------------------------------------------------------------------
+        1         3600.000        100                    1.100         TR
+
+ TRANSIENT SIMULATION
+
+
+
+
+
+
+                     BOUNDARY ARRAY FOR LAYER   1
+ READING ON UNIT    1 WITH FORMAT: (FREE)              
+
+ AQUIFER HEAD WILL BE SET TO   999.00     AT ALL NO-FLOW NODES (IBOUND=0).
+
+             INITIAL HEAD =   100.000     FOR LAYER   1
+
+ ADAPTIVE TIME STEPPING PERFORMED. ATS VARIABLES WILL BE READ.
+ -------------------------------------------------------------
+
+          OUTPUT WILL BE PRINTED AT FOLLOWING       3 TIMES
+          --------------------------------------------------
+   60.00000       300.0000       3600.000    
+
+ OUTPUT CONTROL IS SPECIFIED ONLY AT TIME STEPS FOR WHICH OUTPUT IS DESIRED
+ HEAD PRINT FORMAT CODE IS   0    DRAWDOWN PRINT FORMAT CODE IS   0
+ HEADS WILL BE SAVED ON UNIT   30    DRAWDOWNS WILL BE SAVED ON UNIT   31
+
+ LPF -- LAYER-PROPERTY FLOW PACKAGE, VERSION 7, 5/2/2005
+         INPUT READ FROM UNIT   11
+ # MODFLOW-USG Layer Property Flow (LPF) Package
+ CELL-BY-CELL FLOWS WILL BE SAVED ON UNIT   50
+ HEAD AT CELLS THAT CONVERT TO DRY= -1.00000E+30
+ No named parameters
+ IKCFLAG=0, NODAL INPUT OF HY AND CV
+ CONSTANTCV OPTION:
+ Constant vertical conductance for convertible layers
+ NOVFC OPTION:
+ Do not apply the vertical flow correction
+
+   LAYER FLAGS:
+ LAYER       LAYTYP        LAYAVG         CHANI        LAYVKA        LAYWET
+ ---------------------------------------------------------------------------
+    1             4             0     1.000E+00             0             0
+
+   INTERPRETATION OF LAYER FLAGS:
+                        INTERBLOCK     HORIZONTAL    DATA IN
+         LAYER TYPE   TRANSMISSIVITY   ANISOTROPY   ARRAY VKA   WETTABILITY
+ LAYER      (LAYTYP)      (LAYAVG)       (CHANI)      (LAYVKA)      (LAYWET)
+ ---------------------------------------------------------------------------
+    1     UPSTREAM       HARMONIC     1.000E+00    VERTICAL K  NON-WETTABLE
+
+ WETTING CAPABILITY IS NOT ACTIVE IN ANY LAYER
+
+
+
+              HYD. COND. ALONG ROWS FOR LAYER   1
+ READING ON UNIT   11 WITH FORMAT: (FREE)              
+
+
+
+                VERTICAL HYD. COND. FOR LAYER   1
+ READING ON UNIT   11 WITH FORMAT: (FREE)              
+
+
+
+                   SPECIFIC STORAGE FOR LAYER   1
+ READING ON UNIT   11 WITH FORMAT: (FREE)              
+
+
+
+                     SPECIFIC YIELD FOR LAYER   1
+ READING ON UNIT   11 WITH FORMAT: (FREE)              
+
+ SWF -- SURFACE DOMAIN FLOW PACKAGE, VERSION 1, 5/17/2010 INPUT READ FROM UNIT   65
+
+
+
+                SWF BOUNDARY ARRAY 
+ READING ON UNIT   65 WITH FORMAT: (FREE)              
+
+
+
+                SWF BOUNDARY ARRAY 
+ READING ON UNIT   65 WITH FORMAT: (FREE)              
+
+      SWF BOUNDARY ARRAY  =         1
+
+
+
+                  SWF INITIAL HEAD 
+ READING ON UNIT   65 WITH FORMAT: (FREE)              
+
+ CHD -- TIME-VARIANT SPECIFIED-HEAD OPTION, VERSION 7, 5/2/2005
+ INPUT READ FROM UNIT   23
+ # MODFLOW-USGs Constant-Head Boundary Package (CHD)
+ No named parameters
+ MAXIMUM OF      2 TIME-VARIANT SPECIFIED-HEAD CELLS AT ONE TIME
+
+
+     0 TIME-VARIANT SPECIFIED-HEAD PARAMETERS
+
+ SMS -- SPARSE MATRIX SOLVER PACKAGE, VERSION 7, 5/2/2005
+         INPUT READ FROM UNIT 19
+ No named parameters
+  ALL SOLVER INPUT DATA WILL BE READ FROM THE SOLVER INPUT FILE. 
+ ONLY ACTIVE NODES WILL BE PASSED TO THE SOLVER
+ BOTTOM DAMPING APPLIED TO EACH LINEAR SOLUTION
+ OUTER ITERATION CONVERGENCE CRITERION (HCLOSE) =    0.100000E-02
+ INNER ITERATION CONVERGENCE CRITERION (HICLOSE) =    0.100000E-06
+ MAXIMUM NUMBER OF OUTER ITERATIONS (MXITER)     =       250
+ MAXIMUM NUMBER OF INNER ITERATIONS (ITER1)      =       600
+ SOLVER PRINTOUT INDEX             (IPRSMS)      =         1
+ NONLINEAR ITERATION METHOD    (NONLINMETH)      =         1
+ LINEAR SOLUTION METHOD           (LINMETH)      =         1
+ D-B-D WEIGHT REDUCTION FACTOR      (THETA)      =    0.700000E+00
+ D-B-D WEIGHT INCREASE INCREMENT    (KAPPA)      =    0.700000E-01
+ D-B-D PREVIOUS HISTORY FACTOR      (GAMMA)      =    0.100000E+00
+ MOMENTUM TERM                  (AMOMENTUM)      =    0.000000E+00
+ MAXIMUM NUMBER OF BACKTRACKS    (NUMTRACK)      =       200
+ BACKTRACKING TOLERANCE FACTOR       (BTOL)      =    0.110000E+01
+ BACKTRACKING REDUCTION FACTOR     (BREDUC)      =    0.200000E+00
+ BACKTRACKING RESIDUAL LIMIT      (RES_LIM)      =    0.100000E+01
+ TRUNCATED NEWTON FLAG     (ITRUNCNEWTON)      =         0
+ ***Newton Linearization will be used***
+ 
+ ***XMD linear solver will be used***
+ XMD -- LINEAR SOLUTION BY XMD PACKAGE VERSION 1.30
+     BY MOTOMU IBARAKI, OHIO STATE UNIVERSITY, COLOMBUS, OH
+                 INPUT READ FROM UNIT 19
+ ACCELERATION METHOD                    (IACL) =         1
+ EQUATION ORDERING FLAG               (NORDER) =         0
+ LEVEL OF FILL                         (LEVEL) =         7
+ MAXIMUM NUMBER OF ORTHOGONALIZATIONS  (NORTH) =        14
+ INDEX FOR USING REDUCED SYSTEM      (IREDSYS) =         0
+ RESID. REDUCTION CONVERGE CRITERION  (RRCTOL) =  0.000000E+00
+ INDEX FOR USING DROP TOLERANCE     (IDROPTOL) =         1
+ DROP TOLERANCE VALUE                 ((EPSRN) =  0.100000E-02
+ 
+
+ OUTPUT CONTROL FOR STRESS PERIOD        1
+    DELTAT   0.100000E-02
+    TMINAT   0.100000E-04
+    TMAXAT    60.0000    
+    TADJAT    1.10000    
+    TCUTAT    2.00000    
+    SAVE HEAD FOR ALL LAYERS
+    PRINT HEAD FOR ALL LAYERS
+    SAVE DRAWDOWN FOR ALL LAYERS
+    SAVE BUDGET
+    PRINT BUDGET
+1
+                            STRESS PERIOD NO.    1, LENGTH =   3600.000    
+                            -----------------------------------------------
+
+                            INITIAL TIME STEP SIZE =  0.1000000E-02
+
+ CHD -- TIME-VARIANT SPECIFIED-HEAD OPTION, VERSION 7, 5/2/2005
+ INPUT READ FROM UNIT   23
+
+ CHD NO.        NODE           START HEAD        END HEAD         
+ -----------------------------------------------------------------
+        1          102       2.050           2.050    
+        2          202       1.010           1.010    
+
+
+      2 TIME-VARIANT SPECIFIED-HEAD CELLS
+ -------------------------------------------------------------------------------------
+ 
+ SOLVING FOR HEAD 
+
+ Outer-Iteration  Inner-Iteration  Backtracking  Number of        Incoming       Outgoing      Cutoff     Maximum Head Change      Maximum Head Change
+     Number           Count           Flag       Backtracks       Residual       Residual      Residual            Value               Location
+        1                             0             0          0.807169E-01     0.807169E-01   -1.00000    
+        1                1                                                                                        0.00000                      1           GWF-node number
+        1                1                                                                                      -0.222045E-15                  2           CLN-node number
+
+
+     1 CALLS TO SPARSE MATRIX SOLVER PACKAGE  IN FLOW TIME STEP       1 STRESS PERIOD       1
+
+ TOTAL OF       1OUTER ITERATIONS
+  MAXIMUM CHANGE FOR EACH ITERATION:
+   MAX. CHANGE        NODE  MAX. CHANGE        NODE  MAX. CHANGE        NODE  MAX. CHANGE        NODE  MAX. CHANGE        NODE
+ ------------------------------------------------------------------------------------------------------------------------------------
+    0.0000    ,          1

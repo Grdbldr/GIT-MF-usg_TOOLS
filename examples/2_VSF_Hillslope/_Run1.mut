@@ -1,0 +1,13 @@
+! stopwatch
+! 1
+! mut
+
+modflow_usg
+
+ process modflow files
+ hillslope    
+
+end
+! 
+! elapsed time
+! 1

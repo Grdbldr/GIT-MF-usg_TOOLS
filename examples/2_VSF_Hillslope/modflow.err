@@ -1,0 +1,32 @@
+
+ ========== TRANSLATION TO MODFLOW-USGs ==========
+
+
+
+ >>>>> Testing Layer Elevations <<<<<
+     0 ERRORS,   0 WARNINGS
+
+ >>>>> Translating Output Control Package with ATSA <<<<<
+
+
+ >>>>> Translating Sparse Matrix Solver (SMS) Package <<<<<
+
+
+ >>>>> Translating BASIC Package <<<<<
+
+
+ >>>>> Translating Discretization Package <<<<<
+
+
+ >>>>> Translating Grid Specificationn File (GSF) Package <<<<<
+
+
+ >>>>> Translating Layer Property Flow (LPF) Package <<<<<
+
+ Warning -- When using the LPF Package, be sure that S in the GV database represents Specific Storage
+     This is different from the MODFLOW BCF Package where Storage is defined.
+
+ >>>>> Translating MODFLOW-USGs Drain Package <<<<<
+
+
+ >>>>> Translating Recharge Package <<<<<
