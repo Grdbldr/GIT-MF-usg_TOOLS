@@ -5,7 +5,7 @@ module MUT  !### Modflow-USG Tools
 
     implicit none
 
-    integer, parameter :: maxnn=1000000,maxne=1000000,maxnef=2000000
+    !integer, parameter :: maxnn=1000000,maxne=1000000,maxnef=2000000
     character(60) :: MUT_CMD="none"
     character(60) :: ProcessModflowUSG_CMD="modflow_usg"
 
@@ -32,7 +32,7 @@ module MUT  !### Modflow-USG Tools
         call Msg( '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ')
     end subroutine  header
 
-    subroutine OpenMUT  !--- DoItThing .dit
+    subroutine OpenMUT  !--- Modflow user tools  .mut
 
         write(*,'(a)')  'MUT version '//MUTVersion
 
@@ -40,7 +40,7 @@ module MUT  !### Modflow-USG Tools
         call EnterPrefix(prefix,l_prfx,FnumUserMUT,'mut')
 
         ! open a file called prefix.eco, if it exists, overwrite it with MUT header
-        FNameEco=prefix(:l_prfx)//'.eco'
+        FNameEco=prefix(:l_prfx)//'o.eco'
         call openascii(FnumEco,FNameEco)
         call header
         call Msg ('Echo file: '//FNameEco)
@@ -49,7 +49,7 @@ module MUT  !### Modflow-USG Tools
 
 
         ! Create one processed input file
-        FNameInput=prefix(:l_prfx)//'.input'
+        FNameInput=prefix(:l_prfx)//'o.input'
         call openascii(FnumMUT,FNameInput)
 
         ! strip out blanks and comments and concatenate included files

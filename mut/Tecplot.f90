@@ -567,6 +567,7 @@ module Tecplot !
 	    use version
          
 	    implicit none
+        integer :: i, j
 
         real(dr) :: t_test
         ! structures to hold data for each domain type 
@@ -1789,7 +1790,7 @@ module Tecplot !
         implicit none
         type (domain) medium
         type (domain) global
-        integer :: i, k, l
+        integer :: i, j, k, l
 
         if(BinaryMode) then 
             if(Fileformat==1) then
@@ -4628,7 +4629,7 @@ end subroutine enter_prefix
 
 	implicit none
 
-    integer :: j, nmax, iunit
+    integer :: i, j, nmax, iunit
 	real :: array(nmax)
     integer :: nvar
 	logical :: use_array(nmax)
@@ -4703,7 +4704,7 @@ end subroutine enter_prefix
 
 	implicit none
 
-    integer :: j, nmax, iunit
+    integer :: i, j, nmax, iunit
 	integer :: array(nmax)
     integer :: nvar
 	logical :: use_array(nmax)
@@ -4781,7 +4782,7 @@ end subroutine enter_prefix
 
 	implicit none
 
-    integer :: j, nmax, iunit
+    integer :: i, j, nmax, iunit
 	real(dr) :: array(nmax)
     integer :: nvar
 	logical :: use_array(nmax)
@@ -5132,7 +5133,8 @@ end subroutine enter_prefix
    
         implicit none
         
-       
+        integer :: i
+        
         integer :: FnumEco
         character(MAXLBL) :: FNameEco
 
@@ -5471,6 +5473,7 @@ end subroutine enter_prefix
 
         ! TG
         integer :: FNumTG
+        integer :: i, j
 
 
         !!!! Retrieve input and output file names
