@@ -7,7 +7,7 @@ DISU  29 hillslope.dis
 OC  22 hillslope.oc
 RCH  18 hillslope.rch
 DRN  13 hillslope.drn
-LPF 11 hillslope.lpf
+LPF 11 hillslope_brooks.lpf
 DATA 166 hillslope_FlowReduction.dat
 DATA(BINARY) 50 hillslope.gwf.cbb
 DATA(BINARY) 30 hillslope.gwf.hds
