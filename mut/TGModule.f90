@@ -64,7 +64,7 @@ module MUT  !### Modflow-USG Tools
 
     subroutine ProcessMUT !--- Command processor for Modflow-USG Tools (.mut file extension)
 
-        type (MUSG_Project) MyMUSG_Project
+        type (ModflowProject) MyMUSG_Project
         do
             read(FnumMUT,'(a)',iostat=status,end=10) MUT_CMD
             call LwrCse(MUT_CMD)

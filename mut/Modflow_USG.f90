@@ -48,27 +48,30 @@ module MUSG !
     ! Added for Modflow-USG Tools
     
 
-    type MUSG_Mesh
-        character(128) :: meshtype
-        integer :: nCell   ! is the number of cells (elements in HGS) in the mesh
-        integer :: nLay    ! is the number of layers in the model (if specific to gwf mesh should move to type project MUSG_Project? )
+    type ModflowDomain
+        ! common to all types of domains: gwf, cln, swf, ...
+        character(128) :: MeshType      ! structured or unstructured?
+        character(128) :: ElementType      ! febrick (GWF), fequadrilateral(SWF), felineseg(CLN)
+
+        character(3) :: Name
+        integer :: nCells                ! number of cells in the mesh
+        integer :: nLayers                 ! number of layers in the mesh 
+        integer :: nNodes               ! number of nodes in the mesh  
+        integer :: nNodesPerCell        ! number of nodes/cell  
 
         integer :: iz      ! is 1 if the elevations of node and mesh elements vertices are supplied; 0 otherwise
         integer :: ic      ! is 1 if the cell specifications associated with each node are supplied; 0 otherwise
+
+        
+        integer, allocatable :: iNode(:,:)  ! node list for cell (nCells, nNodesPerCell)
             
-            
-        ! arrays of size nCell
+        ! arrays of size nCells
         real(dr), allocatable :: xCell(:)      ! cell x coordinate
         real(dr), allocatable :: yCell(:)      ! cell y coordinate
         real(dr), allocatable :: zCell(:)      ! cell z coordinate
         integer, allocatable :: lay(:)      ! cell layer number
-        integer :: m
 
-        ! of size nCell, m
-        integer, allocatable :: ivertex(:,:)
-
-        integer :: nvertex ! is the number of element vertex definitions to follow (my nn)
-        ! of size nvertex
+        ! of size nNodes
         real(dr), allocatable :: x(:) 
         real(dr), allocatable :: y(:)
         real(dr), allocatable :: z(:)
@@ -81,9 +84,10 @@ module MUSG !
 	    real, allocatable :: Cbb_CONSTANT_HEAD(:,:)
 	    real, allocatable :: Cbb_RECHARGE(:,:)
 	    real, allocatable :: Cbb_DRAINS(:,:)
+	    real, allocatable :: Cbb_CLN(:,:)
 	    real, allocatable :: Cbb_SWF(:,:)
-	    real, allocatable :: Cbb_ja(:,:)
-	    real, allocatable :: FLX_BAL_ERR(:,:)
+	    real, allocatable :: Cbb_FLOW_FACE(:,:)
+	    real, allocatable :: Cbb_GWF(:,:)
         
         real, allocatable :: laycbd(:)
         real, allocatable :: bot(:)
@@ -92,14 +96,14 @@ module MUSG !
         
         logical :: have_mesh=.false.
             
-    end type MUSG_Mesh
+    end type ModflowDomain
  
 
-    type MUSG_Project
+    type ModflowProject
  
-        type(MUSG_Mesh) gwf
-        type(MUSG_Mesh) cln
-        type(MUSG_Mesh) swf
+        type(ModflowDomain) gwf
+        type(ModflowDomain) cln
+        type(ModflowDomain) swf
         
         character(128) :: MUTPrefix
         character(128) :: Prefix
@@ -219,24 +223,24 @@ module MUSG !
         
         ! DATA(BINARY) files
         ! HDS file
-        character(128) :: FNameHDS
-        integer :: iHDS
+        character(128) :: FNameHDS_GWF
+        integer :: iHDS_GWF
         character(128) :: FNameHDS_CLN
         integer :: iHDS_CLN
         character(128) :: FNameHDS_SWF
         integer :: iHDS_SWF
         
         ! DDN file
-        character(128) :: FNameDDN
-        integer :: iDDN
+        character(128) :: FNameDDN_GWF
+        integer :: iDDN_GWF
         character(128) :: FNameDDN_CLN
         integer :: iDDN_CLN
         character(128) :: FNameDDN_SWF
         integer :: iDDN_SWF
         
         ! CBB file
-        character(128) :: FNameCBB
-        integer :: iCBB
+        character(128) :: FNameCBB_GWF
+        integer :: iCBB_GWF
         character(128) :: FNameCBB_CLN
         integer :: iCBB_CLN
         character(128) :: FNameCBB_SWF
@@ -384,7 +388,7 @@ module MUSG !
 
         
 
-    end type MUSG_Project
+    end type ModflowProject
 
     ! other local variables
     integer, Parameter :: MAXCLN=10000  ! assuming never more than 10000 CLN's
@@ -398,7 +402,7 @@ module MUSG !
 
         integer :: FnumTG
         character(*) :: prefix
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         Modflow.MUTPrefix=prefix
 
         do
@@ -508,7 +512,7 @@ module MUSG !
         PARAMETER (MFVNAM='USG-TRANSPORT ') !USG = Un-Structured Grids
         
         integer :: FnumTG
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
        
         integer :: inunit
         CHARACTER*4 CUNIT(NIUNIT)
@@ -532,7 +536,10 @@ module MUSG !
         read(FnumTG,'(a)') Modflow.Prefix
 		call lcase(Modflow.Prefix)
         call Msg('Modflow project prefix: '//Modflow.Prefix)
-
+        
+        modflow.gwf.Name='GWF'
+        modflow.gwf.ElementType='febrick'
+        
         
         ! Scan file
         Modflow.FNameSCAN=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.scan'
@@ -647,6 +654,8 @@ module MUSG !
         endif
 
         if(Modflow.iCLN /= 0) THEN
+            Modflow.cln.Name='CLN'
+            modflow.cln.ElementType='felineseg'
             Modflow.FNameCLN_GSF=Modflow.Prefix(:len_trim(Modflow.Prefix))//'.cln.gsf'
             inquire(file=Modflow.FNameCLN_GSF,exist=FileExists)
             if(.not. FileExists) then
@@ -661,6 +670,8 @@ module MUSG !
         end if
 
         if(Modflow.iSWF /= 0) THEN
+            Modflow.swf.name='SWF'
+            modflow.swf.ElementType='fequadrilateral'
             Modflow.FNameSWF_GSF=Modflow.Prefix(:len_trim(Modflow.Prefix))//'.swf.gsf'
             inquire(file=Modflow.FNameSWF_GSF,exist=FileExists)
             if(.not. FileExists) then
@@ -847,12 +858,14 @@ module MUSG !
         
         call MUSG_ReadBinary_GWF_HDS_File(Modflow)
         call MUSG_ReadBinary_GWF_DDN_File(Modflow)
-        !call MUSG_ReadBinary_GWF_CBB_File(Modflow)
+        call MUSG_ReadBinary_GWF_CBB_File(Modflow)
         if(Modflow.gwf.have_mesh) then
+            call Msg(' ')
 		    call Msg('Generating mesh-based Tecplot output files for GWF:')
             call MUSG_GWF_HDS_DDN_ToTecplot(Modflow)
             call MUSG_GWF_IBOUND_ToTecplot(Modflow)
-            call MUSG_GWF_CBB_ToTecplot(Modflow)
+            !call MUSG_GWF_CBB_ToTecplot(Modflow)
+            call MUSG_CBB_ToTecplot(Modflow,Modflow.gwf)
         else
 		   call Msg('Generating cell-based Tecplot output files for GWF:')
            call MUSG_GWF_IBOUNDv2_ToTecplot(Modflow)
@@ -861,11 +874,11 @@ module MUSG !
         IF(Modflow.iCLN/=0) THEN
             call MUSG_ReadBinary_CLN_HDS_File(Modflow)
             call MUSG_ReadBinary_CLN_DDN_File(Modflow)
-            !call MUSG_ReadBinary_CLN_CBB_File(Modflow)
+            call MUSG_ReadBinary_CLN_CBB_File(Modflow)
             if(Modflow.cln.have_mesh) then
     		    call Msg('Generating mesh-based Tecplot output files for CLN:')
                 call MUSG_CLN_HDS_DDN_ToTecplot(Modflow)
-                !call MUSG_CLN_CBB_ToTecplot(Modflow)
+                call MUSG_CBB_ToTecplot(Modflow,Modflow.cln)
             else
 		       call Msg('No cell-based Tecplot output files for CLN:')
                !call MUSG_CLN_IBOUNDv2_ToTecplot(Modflow)
@@ -876,11 +889,11 @@ module MUSG !
         IF(Modflow.iSWF/=0) THEN
             call MUSG_ReadBinary_SWF_HDS_File(Modflow)
             call MUSG_ReadBinary_SWF_DDN_File(Modflow)
-            !call MUSG_ReadBinary_SWF_CBB_File(Modflow)
+            call MUSG_ReadBinary_SWF_CBB_File(Modflow)
             if(Modflow.swf.have_mesh) then
     		    call Msg('Generating mesh-based Tecplot output files for SWF:')
                 call MUSG_SWF_HDS_DDN_ToTecplot(Modflow)
-                !call MUSG_SWF_CBB_ToTecplot(Modflow)
+                call MUSG_CBB_ToTecplot(Modflow,Modflow.swf)
             else
 		       call Msg('No cell-based Tecplot output files for SWF:')
                !call MUSG_CLN_IBOUNDv2_ToTecplot(Modflow)
@@ -926,7 +939,7 @@ module MUSG !
       real :: r
       integer :: n, istop, iu, istart, inam2, inam1, iflen, iflush, iopt2, iopt1, ii
       
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
       
 !     ---------------------------------------------------------------
@@ -1127,17 +1140,17 @@ module MUSG !
              modflow.iHDS_SWF=IU
              modflow.FNameHDS_SWF=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.hds') /= 0) then
-             modflow.iHDS=IU
-             modflow.FNameHDS=FNAME(1:IFLEN)
+             modflow.iHDS_GWF=IU
+             modflow.FNameHDS_GWF=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'cln.ddn') /= 0) then
              modflow.iDDN_CLN=IU
              modflow.FNameDDN_CLN=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'swf.ddn') /= 0) then
              modflow.iDDN_SWF=IU
-             modflow.FNameHDS_SWF=FNAME(1:IFLEN)
+             modflow.FNameDDN_SWF=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.ddn') /= 0) then
-             modflow.iDDN=IU
-             modflow.FNameDDN=FNAME(1:IFLEN)
+             modflow.iDDN_GWF=IU
+             modflow.FNameDDN_GWF=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'cln.cbb') /= 0) then
              modflow.iCBB_CLN=IU
              modflow.FNameCBB_CLN=FNAME(1:IFLEN)
@@ -1145,8 +1158,8 @@ module MUSG !
              modflow.iCBB_SWF=IU
              modflow.FNameCBB_SWF=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.cbb') /= 0) then
-             modflow.iCBB=IU
-             modflow.FNameCBB=FNAME(1:IFLEN)
+             modflow.iCBB_GWF=IU
+             modflow.FNameCBB_GWF=FNAME(1:IFLEN)
          endif
       endif
      
@@ -1290,7 +1303,7 @@ module MUSG !
         USE CLN1MODULE, ONLY: ICLNHD, ICLNDD, ICLNIB,ICLNCN
         implicit none
     
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         CHARACTER*400 LINE
         integer :: inoc, lloc, in, istart, k
@@ -1836,7 +1849,7 @@ module MUSG !
         !       ------------------------------------------------------------------
                 USE GWFBASMODULE, ONLY: TIMOT,ITIMOT,TIMOTC,ITIMOTC,&
                     TMINAT,NPTIMES
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
                 
         !
         
@@ -1899,7 +1912,7 @@ module MUSG !
                 ITABRICH,INTRICH,IUZONTAB,RETCRVS,NUTABROWS,NUZONES
               
               implicit none
-              type (MUSG_Project) Modflow
+              type (ModflowProject) Modflow
 
         !
               CHARACTER*14 LAYPRN(5),AVGNAM(5),TYPNAM(3),VKANAM(2),WETNAM(2),&
@@ -2471,7 +2484,7 @@ module MUSG !
       
       implicit none
 
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
       REAL, DIMENSION(:),ALLOCATABLE  ::HTMP1
       REAL*8, DIMENSION(:),ALLOCATABLE  ::HTMP18
@@ -2561,7 +2574,7 @@ module MUSG !
 
       implicit none
 
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
       REAL, DIMENSION(:),ALLOCATABLE  ::HTMP1
       REAL*8, DIMENSION(:),ALLOCATABLE  ::HTMP18
@@ -2658,7 +2671,7 @@ module MUSG !
                             IAFR,IWELLBOT,WELLBOT,NAUXWEL
       implicit none
       
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 !
       CHARACTER*400 LINE
       
@@ -3322,7 +3335,7 @@ module MUSG !
 205   FORMAT(1X,I6,I7,I7,I7,26G16.4)
 !
 !5F-----Check for illegal grid location
-      IF(K.LT.1 .OR. K.GT.NLAY) THEN
+      IF(K.LT.1 .OR. K.GT. NLAY) THEN
          WRITE(IOUT,*) ' Layer number in list is outside of the grid'
          CALL USTOP(' ')
       END IF
@@ -3532,7 +3545,7 @@ module MUSG !
                            NNPCHD,CHDAUX,CHDS
       implicit none
       
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
       CHARACTER*400 LINE
       
@@ -3655,7 +3668,7 @@ module MUSG !
 
       implicit none
       
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
 !
       CHARACTER*400 LINE
@@ -3849,7 +3862,7 @@ module MUSG !
       
       implicit none
       
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
 
       REAL, DIMENSION(:,:),ALLOCATABLE  ::TEMP
       INTEGER, DIMENSION(:,:),ALLOCATABLE  ::ITEMP
@@ -4004,7 +4017,7 @@ module MUSG !
               DO 57 IR=1,NROW
               DO 57 IC=1,NCOL
                 N=N+1
-                IF(ITEMP(IC,IR).LT.1 .OR. ITEMP(IC,IR).GT.NLAY) THEN
+                IF(ITEMP(IC,IR).LT.1 .OR. ITEMP(IC,IR).GT. NLAY) THEN
                   WRITE(IOUT,56) IC,IR,ITEMP(IC,IR)
    56             FORMAT(/1X,'INVALID LAYER NUMBER IN IRCH FOR COLUMN',&
                  I4,'  ROW',I4,'  :',I4)
@@ -5841,452 +5854,178 @@ module MUSG !
       RETURN
       END SUBROUTINE UPARLSTAL
 
-               !
-!    SUBROUTINE SAT_THIK(N,HD,TOTTHICK,BBOT,THCK,K,TTOP)
-!        !     ******************************************************************
-!        !     COMPUTE Kr FOR LAYCON OF 4 AND 5
-!        !     ******************************************************************
-!        !
-!        !      SPECIFICATIONS:
-!        !     ------------------------------------------------------------------
-!                USE GLOBAL,     ONLY:ISSFLG,NODES,iunsat,HNEW
-!        !s      USE DDFMODULE, ONLY: ZETASWI,ISHARP
-!                USE GWFBCFMODULE,ONLY:alpha,beta,sr,BP,IBPN,LAYCON,IDRY,&
-!                retcrvs,nutabrows,nuzones,iuzontab,ITABRICH,INTRICH
-!                DOUBLE PRECISION THCK,HD,BBOT,TTOP,X,S,V,COF1,COF2,FACTOR1,FACTOR2&
-!                ,eps,acof,y,TOTTHICK,seff,gamma, tabS,pc, topS, botS,cellS,bott,&
-!                mul,div
-!                
-!                integer :: n,k,method,izon, iv
-!                real :: thickfact, bpn
-!                
-!        !     ------------------------------------------------------------------
-!        !
-!        ! ----DEPENDING ON THE METHOD, FIND THE SATURATED THICKNESS
-!        !
-!        !--------------------------------------------------------
-!                ZERO=0.
-!                METHOD = 3  !  METHOD 3 IS THE UNCONFINED SATURATED THICKNESS CURVE OF NWT
-!        !1-------USE METHODS 4, 5 AND 6 FOR RICHARDS EQUATION
-!                IF(N.LE.NODES)THEN
-!                IF(LAYCON(K).EQ.5) THEN ! METHOD 4 USES VAN GENUCHTEN AND BROOKS-COREY FUNCTIONS
-!                    METHOD = 4
-!                    IF(ITABRICH.NE.0)THEN !METHOD 5 USES TABULAR INPUT
-!                    METHOD = 5
-!                    IF(INTRICH.NE.0)THEN  !METHOD 6 USES INTEGRATED FUNCTIONS (DISCARD THIS)
-!                        METHOD = 6
-!                    ENDIF
-!                    ENDIF
-!                ENDIF
-!                ENDIF
-!        !-------------------------------------------------------------------------
-!        !2--------ADJUST DIMENSIONS FOR FRESHWATER AND SALTWATER EQUATIONS OF SWI
-!        !s      IF(INDDF. NE. 0) THEN
-!        !2A-----RECOMPUTE ZETA
-!        !s        IF(ISHARP.NE.0) CALL ZETANODE (N, ZETA,HD)
-!        !2B--------SELECT EQUATION
-!        !s        IEQSWI = 1 ! RIGHT NOW HARDWIRE FOR ONLY FRESHWATER ****************
-!        !s        IF(ISHARP.NE.0 .AND. IEQSWI .EQ. 1) THEN
-!        !s          THICKKP = TOTTHICK
-!        !2C--------- EQUATION IS FRESHWATER EQUATION
-!        !s          IF(ZETA. GT. BBOT) THEN
-!        !s           BBOT = ZETA
-!        !s           TOTTHICK = TTOP - BBOT
-!        !s           IF(TOTTHICK. LE. 0.0) THEN
-!        !s              THCK = 0.0
-!        !s              TOTTHICK = THICKKP
-!        !s              RETURN
-!        !s            ENDIF
-!        !s          ENDIF
-!        !s        ELSEIF(ISHARP. NE.0. AND. IEQSWI. EQ. 2) THEN
-!        !2D--------- EQUATION IS SALTWATER EQUATION
-!        !s          IF(HNEW(N). LT. TTOP) THEN         ! THIS SHOULD BE HNEW OF EQUATION 1 FRESHWATER *********
-!        !s            TTOP = HNEW(N)                   ! THIS SHOULD BE HNEW OF EQUATION 1 FRESHWATER *********
-!        !s            TOTTHICK = TTOP - BBOT
-!        !s            HD = ZETA
-!        !s            IF(TOTTHICK. LE. 0.0) THEN
-!        !s              THCK = 0.0
-!        !s              TOTTHICK = THICKKP
-!        !s              RETURN
-!        !s            ENDIF
-!        !s          ENDIF
-!        !s        ENDIF
-!        !s      ENDIF
-!        !      if(IUNSAT.EQ.1.AND.N.LE.NODES) method = 4
-!        !------------------------------------------------------------------------------
-!                IF(METHOD.EQ.1)THEN
-!        !3-------STRAIGHT LINE, NO SMOOTHING
-!                TTOP = BBOT + TOTTHICK
-!                IF(HD.GT.TTOP) HD=TTOP
-!                THCK = (HD - BBOT) / TOTTHICK
-!                IF(THCK.LT.ZERO) THCK=0.0
-!                ELSEIF(METHOD.EQ.2)THEN
-!        !4-------STRAIGHT LINE WITH CUBIC SMOOTHING
-!                Thickfact = 0.01
-!                x = (HD-bbot)
-!                s = Thickfact*TOTTHICK
-!                v = TOTTHICK
-!                cof1 = (1.0D0/s**2.0D0)
-!                cof2 = (2.0D0/s)
-!                factor1 = -cof1*x**3.0D0+cof2*x**2.0D0
-!                factor2 = 1.0D0 + cof1*(v-x)**3.0D0-&
-!                    cof2*(v-x)**2.0D0
-!                THCK = 0.0D0
-!                IF ( x.LT.0.0D0 ) THEN
-!                    THCK = 0.0D0
-!                ELSEIF ( x.LT.s ) THEN
-!                    THCK = factor1
-!                ELSEIF ( x.LT.v-s ) THEN
-!                    THCK = x/v
-!                ELSEIF ( x.LT.v ) THEN
-!                    THCK = factor2
-!                ELSEIF ( x.GE.v ) THEN
-!                    THCK = 1.0D0
-!                END IF
-!                ELSEIF(METHOD.EQ.3)THEN
-!        !5-------STRAIGHT LINE WITH PARABOLIC SMOOTHING
-!                EPS = 0.01
-!                eps = 1.0e-6
-!                ACOF = 1.0 / (1.0 - EPS)
-!                x = (HD-bbot)/TOTTHICK
-!                IF(X.LT.0)THEN
-!                    Y = 0.0
-!                ELSEIF(X.LT.EPS)THEN
-!                    Y = ACOF *0.5/EPS * X**2
-!                ELSEIF(X.LT.1.0-EPS)THEN
-!                    Y = ACOF * X + (1.0-ACOF)*0.5
-!                ELSEIF(X.LT.1.0)THEN
-!                    X = 1.0 - X
-!                    Y = ACOF *0.5/EPS * X**2
-!                    Y = 1.0-Y
-!                ELSE
-!                    Y = 1.0
-!                ENDIF
-!                THCK = Y
-!                ELSEIF(METHOD.EQ.4)THEN
-!        !6---------vanG FUNCTION WITH MODIFICATIONS FOR BUBBLEPT AND FULLYDRY
-!                bpn = 0.0
-!                if(ibpn.eq.1)then
-!                    bpn = bp(N)
-!                endif
-!                TTOP = BBOT + TOTTHICK
-!                pc = 0.5*(ttop+bbot) - (hd-bpn)
-!                if(pc.le.0)then
-!                    thck = 1.0
-!                else
-!                    gamma = 1.-1./beta(n)
-!                    Seff = (1. + (alpha(n)*pc)**beta(n))**gamma
-!                    Seff = 1.0 / Seff
-!                    if(idry.eq.0) then
-!                    thck = seff * (1-sr(n)) + sr(n)
-!                    else
-!                    thck = seff
-!                    endif
-!                endif
-!        !------------------------------------
-!                ELSEIF(METHOD.EQ.5) THEN
-!        !7-------FOR TABULAR INPUT FIND SATURATION FROM TABLE
-!                TTOP = BBOT + TOTTHICK
-!                pc = 0.5*(ttop+bbot) - hd
-!                if(pc.le.0)then
-!                    thck = 1.0
-!                else
-!                    izon = iuzontab(n)
-!                    iv = 2  !variable is saturation
-!                    thck = tabS(pc,retcrvs,izon,iv,nutabrows,nuzones,ttop)
-!                endif
-!                ELSEIF(METHOD.EQ.6) THEN
-!        !8---------FOR USE WITH TABULAR INPUT OF INTERPOLATED TABLE
-!                iv = 2  !variable is saturation
-!                izon = iuzontab(n)
-!                TTOP = BBOT + TOTTHICK
-!                bott = bbot   ! bott changes to water table if below water table in tabS
-!                topS = tabS((ttop-hd),retcrvs,izon,iv,nutabrows,nuzones,ttop)
-!                botS = tabS((bbot-hd),retcrvs,izon,iv,nutabrows,nuzones,bott)
-!                if(hd.lt. bbot) then
-!        !9----------water level is below bottom so integrate curve from top to bottom
-!                    if((ttop-bott).gt.1.0e-5)then
-!                    cellS=-(topS - botS)/(ttop - bott)
-!                    if(cellS.lt.1.0e-20) cellS = 1.0e-20
-!                    else ! past bottom of table so use last two entries to compute value
-!                    mul = retcrvs(iv,nutabrows,izon)-retcrvs(iv,nutabrows-1,izon)
-!                    div = retcrvs(1,nutabrows,izon)-retcrvs(1,nutabrows-1,izon)
-!                    cellS = mul/div
-!                    endif
-!                elseif(hd.gt. ttop) then
-!        !10----------water level is above top so integrated saturation of cell is 1
-!                    cellS = 1.0
-!                else
-!        !11----------water level is within cell so integrate
-!                    cellS = (botS - topS + 1.0 * (hd -bbot))/(ttop - bbot)
-!                endif
-!                thck = cellS
-!        !-------------------------------------------------------------------
-!                ENDIF
-!        !-------------------------------------------------------------------------
-!        !2--------GET BACK TOTTHICK AND MAKE THCK FRACTION OF THAT
-!        !s      IF(INDDF. NE. 0) THEN
-!        !s        IF(ISHARP.NE.0 ) THEN
-!        !2A--------- EQUATION IS FRESHWATER OR SALTWATER
-!        !s          THCK = THCK * TOTTHICK/THICKKP
-!        !s          TOTTHICK = THICKKP
-!        !s        ENDIF
-!        !s      ENDIF
-!        !      if(IUNSAT.EQ.1.AND.N.LE.NODES) method = 4
-!        !------------------------------------------------------------------------------
-!                RETURN
-!    END SUBROUTINE SAT_THIK
-!
-!    SUBROUTINE SGWF2LPFU1N
-!!     ******************************************************************
-!        !     INITIALIZE AND CHECK LPF DATA
-!        !     ******************************************************************
-!        !
-!        !        SPECIFICATIONS:
-!        !     ------------------------------------------------------------------
-!              USE GLOBAL,      ONLY:NCOL,NROW,NLAY,IBOUND,HNEW,LAYCBD,IUNSTR,&
-!                                   IOUT,NODLAY,IA,JA,JAS,IVC
-!              USE GWFBCFMODULE,ONLY:WETDRY,laywet,HK,VKCB,VKA
-!              
-!              real :: hcnv
-!              integer :: nndlay, nstrt, n, jprev, jnext, ii, jj, iis, kk, ij, i, j, k
-!        !     ------------------------------------------------------------------
-!        !
-!        !1------DEFINE CONSTANTS.
-!              ZERO=0.
-!              HCNV=888.88
-!        !
-!        !2-------INSURE THAT EACH ACTIVE CELL HAS AT LEAST ONE NON-ZERO
-!        !2-------TRANSMISSIVE PARAMETER.
-!              DO 60 K=1,NLAY
-!                NNDLAY = NODLAY(K)
-!                NSTRT = NODLAY(K-1)+1
-!              IF(LAYWET(K).NE.0) THEN
-!        !
-!        !3------WETTING IS ACTIVE.
-!                DO 40 N=NSTRT,NNDLAY
-!                 IF(IBOUND(N).EQ.0 .AND. WETDRY(N).EQ.ZERO)&
-!                             GO TO 40
-!        !
-!        !3A-----CHECK HORIZONTAL HYDRAULIC CONDUCTIVITY (HK).
-!                 IF(HK(N).NE.ZERO) GO TO 40
-!        !
-!                 JPREV=0
-!                 JNEXT=0
-!                 DO II=IA(N)+1,IA(N+1)-1
-!                  JJ=JA(II)
-!                  IIS = JAS(II)
-!                  IF(JJ.LT.N.AND.IVC(IIS).EQ.1)THEN
-!                    JPREV=JJ
-!                  ELSEIF(IVC(IIS).EQ.1)THEN
-!                    JNEXT=JJ
-!                  ENDIF
-!                ENDDO
-!        !
-!        !3B-----CHECK VERTICAL HYDRAULIC CONDUCTIVITY AND CONFINING BED
-!        !3B-----VERTICAL HYDRAULIC CONDUCTIVITY.
-!                 IF(NLAY.GT.1) THEN
-!                    IF(VKA(N).NE.ZERO) THEN
-!                       IF(K.NE.NLAY) THEN
-!                          IF (VKA(JNEXT).NE.ZERO) THEN
-!                             IF(LAYCBD(K).NE.0) THEN
-!                                IF(VKCB(N).NE.ZERO) GO TO 40
-!                             ELSE
-!                                GO TO 40
-!                             END IF
-!                          END IF
-!                       END IF
-!                       IF(K.NE.1) THEN
-!                          IF (VKA(JPREV).NE.ZERO) THEN
-!                             IF (LAYCBD(K-1).NE.0) THEN
-!                                IF(VKCB(JPREV).NE.ZERO) GO TO 40
-!                             ELSE
-!                                GO TO 40
-!                             END IF
-!                          ENDIF
-!                       END IF
-!                    END IF
-!                 END IF
-!        !
-!        !3C-----ALL TRANSMISSIVE TERMS ARE ALL 0, SO CONVERT CELL TO NO FLOW.
-!                 IBOUND(N)=0
-!                 HNEW(N)=HCNV
-!                 WETDRY(N)=ZERO
-!                 IF(IUNSTR.EQ.0)THEN
-!                   KK = (N-1) / (NCOL*NROW) + 1
-!                   IJ = N - (KK-1)*NCOL*NROW
-!                   I = (IJ-1)/NCOL + 1
-!                   J = IJ - (I-1)*NCOL
-!                   WRITE(IOUT,43) KK,I,J
-!                 ELSE
-!                   WRITE(IOUT,43) N
-!                 ENDIF
-!           40    CONTINUE
-!        !
-!              ELSE
-!        !
-!        !4------WETTING IS INACTIVE
-!                 DO 50 N=NSTRT,NNDLAY
-!                 IF(IBOUND(N).EQ.0) GO TO 50
-!        !
-!        !4A-----CHECK HORIZONTAL HYDRAULIC CONDUCTIVITY (HK).
-!                 IF(HK(N).NE.ZERO) GO TO 50
-!        !
-!                 JPREV=0
-!                 JNEXT=0
-!                 DO II=IA(N)+1,IA(N+1)-1
-!                  JJ=JA(II)
-!                  IIS = JAS(II)
-!                  IF(JJ.LT.N.AND.IVC(IIS).EQ.1)THEN
-!                    JPREV=JJ
-!                  ELSEIF(IVC(IIS).EQ.1)THEN
-!                    JNEXT=JJ
-!                  ENDIF
-!                ENDDO
-!        !
-!        !4B-----CHECK VERTICAL HYDRAULIC CONDUCTIVITY AND CONFINING BED
-!        !4B-----VERTICAL HYDRAULIC CONDUCTIVITY.
-!                 IF(NLAY.GT.1) THEN
-!                    IF(VKA(N).NE.ZERO) THEN
-!                       IF(K.NE.NLAY) THEN
-!                          IF (VKA(JNEXT).NE.ZERO) THEN
-!                             IF(LAYCBD(K).NE.0) THEN
-!                                IF(VKCB(N).NE.ZERO) GO TO 50
-!                             ELSE
-!                                GO TO 50
-!                             END IF
-!                          END IF
-!                       END IF
-!                       IF(K.NE.1) THEN
-!                          IF (VKA(JPREV).NE.ZERO) THEN
-!                             IF (LAYCBD(K-1).NE.0) THEN
-!                                IF(VKCB(JPREV).NE.ZERO) GO TO 50
-!                             ELSE
-!                                GO TO 50
-!                             END IF
-!                          ENDIF
-!                       END IF
-!                    END IF
-!                 END IF
-!        !
-!        !4C-----ALL TRANSMISSIVE TERMS ARE 0, SO CONVERT CELL TO NO FLOW.
-!                 IBOUND(N)=0
-!                 HNEW(N)=HCNV
-!                 WRITE(IOUT,43) N
-!           43    FORMAT(1X,'NODE (LAYER,ROW,COL) ',I8,&
-!              ' ELIMINATED BECAUSE ALL HYDRAULIC',/,&
-!              ' CONDUCTIVITIES TO NODE ARE 0')
-!           50    CONTINUE
-!              END IF
-!           60 CONTINUE
-!        !
-!        !5------RETURN.
-!              RETURN
-!    END SUBROUTINE SGWF2LPFU1N
-
         
-   subroutine MUSG_ReadBinary_GWF_HDS_File(Modflow)
-    ! borrowed from J. Doherty.
+!   subroutine MUSG_ReadBinary_GWF_HDS_File(Modflow)
+!    ! borrowed from J. Doherty.
+!        implicit none
+!        
+!        integer :: FNum
+!
+!        integer :: kstp,kper
+!        real     :: pertim
+!        real   :: locTIMOT(100)
+!        integer :: i
+!        character*16   :: text
+!        integer  :: ilay        
+!        real     :: rtemp  
+!        integer  :: nstrt,nend,nstrt_kp,nument
+!        integer :: inode, ii
+!
+!        
+!        type (ModflowProject) Modflow
+!
+!        !if(.not. Modflow.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
+!        
+!        allocate(Modflow.gwf.head(Modflow.gwf.nCells,Modflow.ntime))
+!
+!        FNum=Modflow.iHDS_GWF
+!        do i=1,Modflow.ntime
+!          read(FNum,err=9300,end=1000) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
+!          write(*,*) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
+!          
+!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
+!          if(index(text,'cln').ne.0)then
+!            nstrt_kp=nstrt
+!            nstrt=nend
+!            nend=nstrt_kp
+!            nument=nend-nstrt+1
+!            if(nument.le.0)then
+!              call msg('nument.le.0')
+!              continue
+!            end if
+!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
+!          else
+!              read(FNum,end=9400) (Modflow.gwf.head(inode,i),inode=nstrt,nend)
+!              !write(*,*) totim,nstrt,Modflow.gwf.head(nstrt,i)
+!          end if
+!          !if(ilay==Modflow.gwf.nLayers)then
+!          !    ntime=ntime+1 
+!          !endif
+!
+!        end do
+!
+!9300    continue
+!9400    continue
+!1000    continue
+!        
+!            continue        
+!        
+!    end subroutine MUSG_ReadBinary_GWF_HDS_File
+    subroutine MUSG_ReadBinary_GWF_HDS_File(Modflow)
         implicit none
         
-        integer :: FNum
-
-        integer :: kstp,kper
-        real     :: pertim
-        real   :: locTIMOT(100)
         integer :: i
         character*16   :: text
-        integer  :: ilay        
-        real     :: rtemp  
-        integer  :: nstrt,nend,nstrt_kp,nument
-        integer :: inode, ii
-
         
-        type (MUSG_Project) Modflow
-
-        !if(.not. Modflow.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
+        integer :: idum, KSTPREAD,KPERREAD
+        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        allocate(Modflow.gwf.head(Modflow.gwf.nCell,Modflow.ntime))
+        integer :: k, nndlay, nstrt, ndslay, ilay
+        
+        type (ModflowProject) Modflow
 
-        FNum=Modflow.iHDS
+        allocate(Modflow.gwf.head(Modflow.gwf.nCells,Modflow.ntime))
+        
+        call msg(' ')
+        write(TmpSTR,'(a,i5,a)')'Reading GWF head data from unit ',Modflow.iHDS_GWF,' file '//Modflow.FNameHDS_GWF(:len_trim(Modflow.FNameHDS_GWF))
+        call msg(TmpSTR)
+        call msg('    Period      Step     Layer      Time Cell1Head            Name')
+
         do i=1,Modflow.ntime
-          read(FNum,err=9300,end=1000) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
-          write(*,*) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
-          
-          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-          if(index(text,'cln').ne.0)then
-            nstrt_kp=nstrt
-            nstrt=nend
-            nend=nstrt_kp
-            nument=nend-nstrt+1
-            if(nument.le.0)then
-              call msg('nument.le.0')
-              continue
-            end if
-            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-          else
-              read(FNum,end=9400) (Modflow.gwf.head(inode,i),inode=nstrt,nend)
-              !write(*,*) totim,nstrt,Modflow.gwf.head(nstrt,i)
-          end if
-          !if(ilay==Modflow.gwf.nLay)then
-          !    ntime=ntime+1 
-          !endif
-
+            IDUM = 1
+            DO K=1,NLAY
+              NNDLAY = NODLAY(K)
+              NSTRT = NODLAY(K-1)+1
+              NDSLAY = NNDLAY - NODLAY(K-1)          
+              CALL ULASAVURD(Modflow.gwf.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                  TOTIMREAD,NSTRT,NNDLAY,ILAY,Modflow.iHDS_GWF,NODES)
+              WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,Modflow.gwf.head(1,i),TEXT
+              call msg(TmpSTR)
+            END DO
         end do
 
-9300    continue
-9400    continue
-1000    continue
-        
-            continue        
-        
     end subroutine MUSG_ReadBinary_GWF_HDS_File
     
+!    subroutine MUSG_ReadBinary_GWF_DDN_File(Modflow)
+!    ! borrowed from J. Doherty.
+!        implicit none
+!
+!        integer :: Fnum
+!
+!        integer  :: kstp,kper
+!        real     :: pertim
+!        real     :: totim
+!        integer :: i
+!        character*16   :: text
+!        integer  :: ilay        
+!        real     :: rtemp  
+!        integer  :: nstrt,nend,nstrt_kp,nument
+!        integer :: inode, ii
+!
+!        
+!        type (ModflowProject) Modflow
+!
+!        allocate(Modflow.gwf.sat(Modflow.gwf.nCells,Modflow.ntime))
+!        
+!        FNum=Modflow.iDDN
+!        do i=1,Modflow.ntime
+!          read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
+!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
+!          if(index(text,'cln').ne.0)then
+!            nstrt_kp=nstrt
+!            nstrt=nend
+!            nend=nstrt_kp
+!            nument=nend-nstrt+1
+!            if(nument.le.0)then
+!              call msg('nument.le.0')
+!              continue
+!            end if
+!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
+!          else
+!              read(FNum,err=9400,end=9400) (Modflow.gwf.sat(inode,i),inode=nstrt,nend)
+!              !write(*,*) totim,nstrt,Modflow.gwf.sat(nstrt,Modflow.i)
+!          end if
+!
+!        end do
+!9300    continue
+!9400    continue
+!1000    continue
+!    end subroutine MUSG_ReadBinary_GWF_DDN_File
     subroutine MUSG_ReadBinary_GWF_DDN_File(Modflow)
-    ! borrowed from J. Doherty.
         implicit none
-
-        integer :: Fnum
-
-        integer  :: kstp,kper
-        real     :: pertim
-        real     :: totim
+        
         integer :: i
         character*16   :: text
-        integer  :: ilay        
-        real     :: rtemp  
-        integer  :: nstrt,nend,nstrt_kp,nument
-        integer :: inode, ii
-
         
-        type (MUSG_Project) Modflow
-
-        allocate(Modflow.gwf.sat(Modflow.gwf.nCell,Modflow.ntime))
+        integer :: idum, KSTPREAD,KPERREAD
+        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        FNum=Modflow.iDDN
+        integer :: k, nndlay, nstrt, ndslay, ilay
+        
+        type (ModflowProject) Modflow
+
+        allocate(Modflow.gwf.sat(Modflow.gwf.nCells,Modflow.ntime))
+        
+        call msg(' ')
+        write(TmpSTR,'(a,i5,a)')'Reading GWF saturation(DDN) data from unit ',Modflow.iDDN_GWF,' file '//Modflow.FNameDDN_GWF(:len_trim(Modflow.FNameDDN_GWF))
+        call msg(TmpSTR)
+        call msg('    Period      Step     Layer      Time Cell1SAT             Name')
+
         do i=1,Modflow.ntime
-          read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
-          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-          if(index(text,'cln').ne.0)then
-            nstrt_kp=nstrt
-            nstrt=nend
-            nend=nstrt_kp
-            nument=nend-nstrt+1
-            if(nument.le.0)then
-              call msg('nument.le.0')
-              continue
-            end if
-            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-          else
-              read(FNum,err=9400,end=9400) (Modflow.gwf.sat(inode,i),inode=nstrt,nend)
-              !write(*,*) totim,nstrt,Modflow.gwf.sat(nstrt,Modflow.i)
-          end if
-
+            IDUM = 1
+            DO K=1,NLAY
+              NNDLAY = NODLAY(K)
+              NSTRT = NODLAY(K-1)+1
+              NDSLAY = NNDLAY - NODLAY(K-1)          
+              CALL ULASAVURD(Modflow.gwf.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                  TOTIMREAD,NSTRT,NNDLAY,ILAY,Modflow.iDDN_GWF,NODES)
+              WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,Modflow.gwf.sat(1,i),TEXT
+              call msg(TmpSTR)
+            END DO
         end do
-9300    continue
-9400    continue
-1000    continue
+
     end subroutine MUSG_ReadBinary_GWF_DDN_File
+    
 
     
     subroutine MUSG_ReadBinary_GWF_CBB_File(Modflow)
@@ -6305,14 +6044,20 @@ module MUSG !
         integer :: ntime, i
 
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
+
+        call msg(' ')
+        write(TmpSTR,'(a,i5,a)')'Reading GWF cell-by-cell flow data from unit ',Modflow.iCBB_GWF,' file '//Modflow.FNameCBB_GWF(:len_trim(Modflow.FNameCBB_GWF))
+        call msg(TmpSTR)
+        call msg('    Period      Step      NVAL     ICODE            Name')
 
         ntime=0
         KSTP_last=0
-        FNum=Modflow.iCBB
+        FNum=Modflow.iCBB_GWF
         do
             read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
-            write(*,*) 'cbb ',KSTP,KPER,TEXT,NVAL,idum,ICODE
+            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
+            call Msg(TmpSTR)
 
             if(KSTP .ne. KSTP_last) then
                 KSTP_last=KSTP
@@ -6323,13 +6068,16 @@ module MUSG !
             if((NVAL.le.0)) go to 9300
             if(ICODE .gt. 0)then
                 if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                    if(ntime .eq.1) allocate(Modflow.gwf.cbb_ja(NVAL,Modflow.ntime))
-                    read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_ja(I,ntime),I=1,NVAL)
+                    if(ntime .eq.1) then
+                        allocate(Modflow.gwf.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                        Modflow.gwf.Cbb_FLOW_FACE=0
+                    endif
+                    read(FNum,err=9400,end=9400) (Modflow.gwf.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
                     !rmax=-1e20
                     !rmin=1e20
                     !do i=1,nval
-                    !    rmax=max(rmax,Modflow.gwf.cbb_ja(I,ntime))
-                    !    rmin=min(rmin,Modflow.gwf.cbb_ja(I,ntime))
+                    !    rmax=max(rmax,Modflow.gwf.Cbb_FLOW_FACE(I,ntime))
+                    !    rmin=min(rmin,Modflow.gwf.Cbb_FLOW_FACE(I,ntime))
                     !enddo
                     !write(*,*) text
                     !write(*,*) nval
@@ -6339,16 +6087,29 @@ module MUSG !
                     if(ntime .eq.1) THEN
                         if(index(text,'STORAGE') .ne.0) then
 	                        allocate(Modflow.gwf.cbb_STORAGE(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_STORAGE=0
+                            
                         else if(index(text,'CONSTANT HEAD') .ne.0) then
 	                        allocate(Modflow.gwf.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_CONSTANT_HEAD=0
+                            
                         else if(index(text,'RECHARGE') .ne.0) then
 	                        allocate(Modflow.gwf.cbb_RECHARGE(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_RECHARGE=0
+                            
                         else if(index(text,'DRAINS') .ne.0) then
 	                        allocate(Modflow.gwf.cbb_DRAINS(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_DRAINS=0
+                            
+                        else if(index(text,'CLN') .ne.0) then
+	                        allocate(Modflow.gwf.cbb_CLN(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_CLN=0
+                            
                         else if(index(text,'SWF') .ne.0) then
 	                        allocate(Modflow.gwf.cbb_SWF(NVAL,Modflow.ntime))
+                            Modflow.gwf.cbb_SWF=0
                         else 
-                            call ErrMsg(Modflow.FNameCBB(:len_trim(Modflow.FNameCBB))//': TEXT variable '//text//' not currently recognized ')
+                            call ErrMsg(Modflow.FNameCBB_GWF(:len_trim(Modflow.FNameCBB_GWF))//': TEXT variable '//text//' not currently recognized ')
                             
                         end if
                     endif  
@@ -6373,6 +6134,9 @@ module MUSG !
                         
                     else if(index(text,'DRAINS') .ne.0) then
                         read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_DRAINS(I,ntime),I=1,NVAL)
+                        
+                    else if(index(text,'CLN') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_CLN(I,ntime),I=1,NVAL)
                         
                     else if(index(text,'SWF') .ne.0) then
                         read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_SWF(I,ntime),I=1,NVAL)
@@ -6405,9 +6169,9 @@ module MUSG !
         integer :: idum, KSTPREAD,KPERREAD
         DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
-        allocate(Modflow.cln.head(Modflow.cln.nCell,Modflow.ntime))
+        allocate(Modflow.cln.head(Modflow.cln.nCells,Modflow.ntime))
         
         call msg(' ')
         write(TmpSTR,'(a,i5,a)')'Reading CLN head data from unit ',Modflow.iHDS_CLN,' file '//Modflow.FNameHDS_CLN(:len_trim(Modflow.FNameHDS_CLN))
@@ -6454,6 +6218,33 @@ module MUSG !
       RETURN
     END SUBROUTINE ULASAVRD
 
+    SUBROUTINE ULASAVURD(BUF,TEXT,KSTP,KPER,PERTIM,TOTIM,NSTRT,&
+                        NNDLAY,ILAY,ICHN,NODES)
+!     ******************************************************************
+!     READ SAVED 1 LAYER ARRAY ON DISK FOR UNSTRUCTURED FORMAT
+!     ******************************************************************
+!
+!        SPECIFICATIONS:
+!     ------------------------------------------------------------------
+      CHARACTER*16 TEXT
+      DOUBLE PRECISION PERTIM,TOTIM
+      real :: BUF(NODES)
+      REAL PERTIMS,TOTIMS
+      
+      integer :: nstrt, kstp, kper, nodes, ilay, ichn, nndlay, i
+!     ------------------------------------------------------------------
+!
+!1------WRITE AN UNFORMATTED RECORD CONTAINING IDENTIFYING INFORMATION.
+      READ(ICHN) KSTP,KPER,PERTIMS,TOTIMS,TEXT,NSTRT,NNDLAY,ILAY
+!
+!2------WRITE AN UNFORMATTED RECORD CONTAINING ARRAY VALUES FOR THE LAYER
+      READ(ICHN) (BUF(I),I=NSTRT,NNDLAY)
+      PERTIM = PERTIMS
+      TOTIM = TOTIMS
+!
+!3------RETURN
+      RETURN
+      END SUBROUTINE ULASAVURD
     
     subroutine MUSG_ReadBinary_CLN_DDN_File(Modflow)
         implicit none
@@ -6464,9 +6255,9 @@ module MUSG !
         integer :: idum, KSTPREAD,KPERREAD
         DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
-        allocate(Modflow.cln.sat(Modflow.cln.nCell,Modflow.ntime))
+        allocate(Modflow.cln.sat(Modflow.cln.nCells,Modflow.ntime))
 
         call msg(' ')
         write(TmpSTR,'(a,i5,a)')'Reading CLN saturation(DDN) data from unit ',Modflow.iDDN_CLN,' file '//Modflow.FNameDDN_CLN(:len_trim(Modflow.FNameDDN_CLN))
@@ -6484,37 +6275,178 @@ module MUSG !
 
     end subroutine MUSG_ReadBinary_CLN_DDN_File
 
+    !subroutine MUSG_ReadBinary_CLN_CBB_File(Modflow)
+    !    implicit none
+    !    
+    !    integer :: i
+    !    character*16   :: text
+    !    
+    !    integer :: inu, idum, KSTPREAD,KPERREAD
+    !    DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
+    !    
+    !    type (ModflowProject) Modflow
+    !
+    !    allocate(Modflow.cln.FLX_BAL_ERR(Modflow.cln.nCells,Modflow.ntime))
+    !
+    !    write(TmpSTR,'(a,i5,a)')'Reading CLN cell by cell flow data from unit ',Modflow.iCBB_CLN,' file '//Modflow.FNameCBB_CLN(:len_trim(Modflow.FNameCBB_CLN))
+    !    call msg(TmpSTR)
+    !    call msg('Period Step Time Text')
+    !
+    !    INU=Modflow.iCBB_CLN
+    !    IOUT=FNumEco
+    !    do i=1,Modflow.ntime
+    !        !INU = ICLNCB
+    !        IDUM = 1
+    !        CALL ULASAVRD(Modflow.cln.FLX_BAL_ERR(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+    !            TOTIMREAD,NCLNNDS,IDUM,IDUM,INU)
+    !        WRITE(TmpSTR,'(i10, i10, F10.3, a)')KPERREAD,KSTPREAD,TOTIMREAD,TEXT
+    !        call msg(TmpSTR)
+    !
+    !    end do
+    !
+    !end subroutine MUSG_ReadBinary_CLN_CBB_File
+
     subroutine MUSG_ReadBinary_CLN_CBB_File(Modflow)
+    ! borrowed from J. Doherty.
         implicit none
-        
-        integer :: i
+
+        integer :: Fnum
+
+        integer :: kstp,kper,NVAL,idum,ICODE, i
         character*16   :: text
         
-        integer :: inu, idum, KSTPREAD,KPERREAD
-        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        type (MUSG_Project) Modflow
+        integer :: KSTP_last
+        !real :: rmin
+        !real :: rmax
+        integer :: ntime
 
-        allocate(Modflow.cln.FLX_BAL_ERR(Modflow.cln.nCell,Modflow.ntime))
+        
+        type (ModflowProject) Modflow
 
-        write(TmpSTR,'(a,i5,a)')'Reading CLN cell by cell flow data from unit ',Modflow.iCBB_CLN,' file '//Modflow.FNameCBB_CLN(:len_trim(Modflow.FNameCBB_CLN))
+        call msg(' ')
+        write(TmpSTR,'(a,i5,a)')'Reading CLN cell-by-cell flow data from unit ',Modflow.iCBB_CLN,' file '//Modflow.FNameCBB_CLN(:len_trim(Modflow.FNameCBB_CLN))
         call msg(TmpSTR)
-        call msg('Period Step Time Text')
+        call msg('    Period      Step      NVAL     ICODE            Name')
 
-        INU=Modflow.iCBB_CLN
-        IOUT=FNumEco
-        do i=1,Modflow.ntime
-            !INU = ICLNCB
-            IDUM = 1
-            CALL ULASAVRD(Modflow.cln.FLX_BAL_ERR(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                TOTIMREAD,NCLNNDS,IDUM,IDUM,INU)
-            WRITE(TmpSTR,'(i10, i10, F10.3, a)')KPERREAD,KSTPREAD,TOTIMREAD,TEXT
-            call msg(TmpSTR)
+        ntime=0
+        KSTP_last=0
+        FNum=Modflow.iCBB_CLN
+        do
+            read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
+            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
+            call Msg(TmpSTR)
+
+            if(KSTP .ne. KSTP_last) then
+                KSTP_last=KSTP
+                ntime=ntime+1 
+            endif
+
+              
+            if((NVAL.le.0)) go to 9300
+            if(ICODE .gt. 0)then
+                if(index(TEXT,'FLOW JA FACE') .ne. 0) then
+                    if(ntime .eq.1) allocate(Modflow.cln.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                    read(FNum,err=9400,end=9400) (Modflow.cln.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
+                    !rmax=-1e20
+                    !rmin=1e20
+                    !do i=1,nval
+                    !    rmax=max(rmax,Modflow.cln.Cbb_FLOW_FACE(I,ntime))
+                    !    rmin=min(rmin,Modflow.cln.Cbb_FLOW_FACE(I,ntime))
+                    !enddo
+                    !write(*,*) text
+                    !write(*,*) nval
+                    !write(*,*) rmin
+                    !write(*,*) rmax
+                else 
+                    if(ntime .eq.1) THEN
+                        if(index(text,'CLN STORAGE') .ne.0) then
+	                        allocate(Modflow.cln.cbb_STORAGE(NVAL,Modflow.ntime))
+                        else if(index(text,'CLN CONST HEAD') .ne.0) then
+	                        allocate(Modflow.cln.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
+                        else if(index(text,'FLOW CLN FACE') .ne.0) then
+	                        allocate(Modflow.cln.cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                            
+                        else if(index(text,'GWF') .ne.0) then
+	                        allocate(Modflow.cln.cbb_GWF(NVAL,Modflow.ntime))
+                            
+                            
+                        else if(index(text,'RECHARGE') .ne.0) then
+	                        allocate(Modflow.cln.cbb_RECHARGE(NVAL,Modflow.ntime))
+                        else if(index(text,'DRAINS') .ne.0) then
+	                        allocate(Modflow.cln.cbb_DRAINS(NVAL,Modflow.ntime))
+                        end if
+                    endif  
+
+                    if(index(text,'CLN STORAGE') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_STORAGE(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,Modflow.cln.cbb_STORAGE(I,ntime))
+                        !    rmin=min(rmin,Modflow.cln.cbb_STORAGE(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'CLN CONST HEAD') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,Modflow.cln.cbb_CONSTANT_HEAD(I,ntime))
+                        !    rmin=min(rmin,Modflow.cln.cbb_CONSTANT_HEAD(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'FLOW CLN FACE') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_FLOW_FACE(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,Modflow.cln.cbb_RECHARGE(I,ntime))
+                        !    rmin=min(rmin,Modflow.cln.cbb_RECHARGE(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    else if(index(text,'DRAINS') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_DRAINS(I,ntime),I=1,NVAL)
+                        !rmax=-1e20
+                        !rmin=1e20
+                        !do i=1,nval
+                        !    rmax=max(rmax,Modflow.cln.cbb_DRAINS(I,ntime))
+                        !    rmin=min(rmin,Modflow.cln.cbb_DRAINS(I,ntime))
+                        !enddo
+                        !write(*,*) text
+                        !write(*,*) nval
+                        !write(*,*) rmin
+                        !write(*,*) rmax
+                    end if
+                  
+                  
+                endif
+            else if(ICODE .eq. -1) then
+                      call Msg( 'The budget data is written in the compact budget style.')
+                      call Msg( 'Not supported yet.')
+                      stop
+            end if
+
+
 
         end do
-
+9300    continue
+9400    continue
+1000    continue
+ 
     end subroutine MUSG_ReadBinary_CLN_CBB_File
+    
 
+    
     subroutine MUSG_ReadBinary_SWF_HDS_File(Modflow)
         implicit none
         
@@ -6524,9 +6456,9 @@ module MUSG !
         integer :: idum, KSTPREAD,KPERREAD
         DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
-        allocate(Modflow.swf.head(Modflow.swf.nCell,Modflow.ntime))
+        allocate(Modflow.swf.head(Modflow.swf.nCells,Modflow.ntime))
         
         call msg(' ')
         write(TmpSTR,'(a,i5,a)')'Reading SWF head data from unit ',Modflow.iHDS_SWF,' file '//Modflow.FNameHDS_SWF(:len_trim(Modflow.FNameHDS_SWF))
@@ -6552,9 +6484,9 @@ module MUSG !
         integer :: idum, KSTPREAD,KPERREAD
         DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
-        allocate(Modflow.swf.sat(Modflow.swf.nCell,Modflow.ntime))
+        allocate(Modflow.swf.sat(Modflow.swf.nCells,Modflow.ntime))
 
         call msg(' ')
         write(TmpSTR,'(a,i5,a)')'Reading SWF saturation(DDN) data from unit ',Modflow.iDDN_SWF,' file '//Modflow.FNameDDN_SWF(:len_trim(Modflow.FNameDDN_SWF))
@@ -6590,11 +6522,11 @@ module MUSG !
 !        integer :: inode, ii
 !
 !        
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        !if(.not. Modflow.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
 !        
-!        allocate(Modflow.swf.head(Modflow.swf.nCell,Modflow.ntime))
+!        allocate(Modflow.swf.head(Modflow.swf.nCells,Modflow.ntime))
 !
 !        FNum=Modflow.iHDS_SWF
 !        do i=1,Modflow.ntime
@@ -6643,9 +6575,9 @@ module MUSG !
 !        integer :: inode, ii
 !
 !        
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
-!        allocate(Modflow.swf.sat(Modflow.swf.nCell,Modflow.ntime))
+!        allocate(Modflow.swf.sat(Modflow.swf.nCells,Modflow.ntime))
 !        
 !        FNum=Modflow.iDDN_SWF
 !        do i=1,Modflow.ntime
@@ -6688,14 +6620,20 @@ module MUSG !
         integer :: ntime
 
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
+
+        call msg(' ')
+        write(TmpSTR,'(a,i5,a)')'Reading SWF cell-by-cell flow data from unit ',Modflow.iCBB_SWF,' file '//Modflow.FNameCBB_SWF(:len_trim(Modflow.FNameCBB_SWF))
+        call msg(TmpSTR)
+        call msg('    Period      Step      NVAL     ICODE            Name')
 
         ntime=0
         KSTP_last=0
         FNum=Modflow.iCBB_SWF
         do
             read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
-            write(*,*) 'swf cbb ',KSTP,KPER,TEXT,NVAL,idum,ICODE
+            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
+            call Msg(TmpSTR)
 
             if(KSTP .ne. KSTP_last) then
                 KSTP_last=KSTP
@@ -6706,13 +6644,13 @@ module MUSG !
             if((NVAL.le.0)) go to 9300
             if(ICODE .gt. 0)then
                 if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                    if(ntime .eq.1) allocate(Modflow.swf.cbb_ja(NVAL,Modflow.ntime))
-                    read(FNum,err=9400,end=9400) (Modflow.swf.cbb_ja(I,ntime),I=1,NVAL)
+                    if(ntime .eq.1) allocate(Modflow.swf.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                    read(FNum,err=9400,end=9400) (Modflow.swf.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
                     !rmax=-1e20
                     !rmin=1e20
                     !do i=1,nval
-                    !    rmax=max(rmax,Modflow.swf.cbb_ja(I,ntime))
-                    !    rmin=min(rmin,Modflow.swf.cbb_ja(I,ntime))
+                    !    rmax=max(rmax,Modflow.swf.Cbb_FLOW_FACE(I,ntime))
+                    !    rmin=min(rmin,Modflow.swf.Cbb_FLOW_FACE(I,ntime))
                     !enddo
                     !write(*,*) text
                     !write(*,*) nval
@@ -6725,7 +6663,10 @@ module MUSG !
                         else if(index(text,'SWF CONST HEAD') .ne.0) then
 	                        allocate(Modflow.swf.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
                         else if(index(text,'FLOW SWF FACE') .ne.0) then
-	                        allocate(Modflow.swf.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
+	                        allocate(Modflow.swf.cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                            
+                        else if(index(text,'GWF') .ne.0) then
+	                        allocate(Modflow.swf.cbb_GWF(NVAL,Modflow.ntime))
                             
                             
                         else if(index(text,'RECHARGE') .ne.0) then
@@ -6759,8 +6700,8 @@ module MUSG !
                         !write(*,*) nval
                         !write(*,*) rmin
                         !write(*,*) rmax
-                    else if(index(text,'RECHARGE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_RECHARGE(I,ntime),I=1,NVAL)
+                    else if(index(text,'FLOW SWF FACE') .ne.0) then
+                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_FLOW_FACE(I,ntime),I=1,NVAL)
                         !rmax=-1e20
                         !rmin=1e20
                         !do i=1,nval
@@ -6806,7 +6747,7 @@ module MUSG !
     subroutine MUSG_ReadBAS6_Options(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         CHARACTER*80 HEADNG(2)
         integer :: ICHFLG 
@@ -6961,7 +6902,7 @@ module MUSG !
                     
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: Kloc, KK, nndlay, nstrt,ndslay,n
        
@@ -7052,7 +6993,7 @@ module MUSG !
 
         CHARACTER*400 LINE
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: indis,lloc,istop,istart, k
         real :: r
@@ -7186,7 +7127,7 @@ module MUSG !
     subroutine MUSG_ReadDISU_pt2(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
  
         REAL, DIMENSION(:),    ALLOCATABLE  ::TEMP
@@ -7303,7 +7244,7 @@ module MUSG !
 !
         implicit none
 !
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
 
         
@@ -7335,7 +7276,7 @@ module MUSG !
     
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: indis,iss,itr,n,lloc, i
         real*8 :: pp
@@ -7446,7 +7387,7 @@ module MUSG !
     subroutine MUSG_ReadCLN(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         character(400) :: line
         
         integer :: ICLNNDS
@@ -7938,7 +7879,7 @@ module MUSG !
 
       implicit none
 
-      type (MUSG_Project) Modflow
+      type (ModflowProject) Modflow
       
       CHARACTER*24 ANAME(3)
       CHARACTER*400 LINE
@@ -8396,7 +8337,7 @@ module MUSG !
     subroutine MUSG_ReadCLN_pt2(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         character(400) :: line
         
         integer :: IFNO, i
@@ -8560,7 +8501,7 @@ module MUSG !
     subroutine MUSG_WriteVolumeBudgetToTecplot(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: i
 
@@ -8756,7 +8697,7 @@ module MUSG !
     subroutine MUSG_CreateStepPeriodTimeFile(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: Fnum
         integer :: FNumStepPeriodTime
@@ -8818,7 +8759,7 @@ module MUSG !
     
     subroutine MUSG_GWF_HDS_DDN_ToTecplot(Modflow)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -8840,7 +8781,7 @@ module MUSG !
 
         write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
         
-        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nvertex,', E=',Modflow.gwf.nCell,', datapacking=block, &
+        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED)'
         
         TMPStr=', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'
@@ -8855,30 +8796,30 @@ module MUSG !
         write(FNum,'(a)') output_line(:l1)
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.gwf.lay(i),i=1,Modflow.gwf.nCell)
+        write(FNum,'(5i8)') (Modflow.gwf.lay(i),i=1,Modflow.gwf.nCells)
         write(FNum,'(a)') '# head'
-        write(FNum,'(5e20.12)') (Modflow.gwf.head(i,1),i=1,Modflow.gwf.nCell)
+        write(FNum,'(5e20.12)') (Modflow.gwf.head(i,1),i=1,Modflow.gwf.nCells)
         write(FNum,'(a)') '# saturation'
-        write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,1),i=1,Modflow.gwf.nCell)
+        write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,1),i=1,Modflow.gwf.nCells)
         
-        do i=1,Modflow.gwf.nCell
-            write(FNum,'(8i8)') (Modflow.gwf.ivertex(j,i),j=1,Modflow.gwf.m)
+        do i=1,Modflow.gwf.nCells
+            write(FNum,'(8i8)') (Modflow.gwf.iNode(j,i),j=1,Modflow.gwf.nNodesPerCell)
         end do
        
         
         do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.gwf.nvertex,', E=',Modflow.gwf.nCell,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             write(FNum,'(a)') '# head'
-            write(FNum,'(5e20.12)') (Modflow.gwf.head(i,j),i=1,Modflow.gwf.nCell)
+            write(FNum,'(5e20.12)') (Modflow.gwf.head(i,j),i=1,Modflow.gwf.nCells)
             write(FNum,'(a)') '# sat'
-            write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,j),i=1,Modflow.gwf.nCell)
+            write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,j),i=1,Modflow.gwf.nCells)
         enddo
         
         call FreeUnit(FNum)
@@ -8887,7 +8828,7 @@ module MUSG !
     
     subroutine MUSG_GWF_IBOUND_ToTecplot(Modflow)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -8907,20 +8848,20 @@ module MUSG !
 
         write(FNum,'(a)') 'variables="X","Y","Z","IBOUND"'
         
-        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nvertex,', E=',Modflow.gwf.nCell,', datapacking=block, &
+        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4]=CELLCENTERED)'
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nNodes)
         write(FNum,'(a)') '# IBOUND'
-        write(FNum,'(5i5)') (IBOUND(i),i=1,Modflow.gwf.nCell)
+        write(FNum,'(5i5)') (IBOUND(i),i=1,Modflow.gwf.nCells)
         
-        do i=1,Modflow.gwf.nCell
-            write(FNum,'(8i8)') (Modflow.gwf.ivertex(j,i),j=1,Modflow.gwf.m)
+        do i=1,Modflow.gwf.nCells
+            write(FNum,'(8i8)') (Modflow.gwf.iNode(j,i),j=1,Modflow.gwf.nNodesPerCell)
         end do
        
    
@@ -8931,7 +8872,7 @@ module MUSG !
 
     subroutine MUSG_GWF_IBOUNDv2_ToTecplot(Modflow)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -8950,7 +8891,7 @@ module MUSG !
         write(FNum,'(a)')'ZONE t="GWF IBOUND v2" '
 
         write(FNum,'(a)') '# x, y, z, ibound'
-        do i=1, Modflow.gwf.nCell
+        do i=1, Modflow.gwf.nCells
             write(FNum,'(5e20.12)') Modflow.gwf.xcell(i),Modflow.gwf.ycell(i),Modflow.gwf.zcell(i),IBOUND(i)
         end do
    
@@ -8961,7 +8902,7 @@ module MUSG !
     
     subroutine MUSG_CLN_HDS_DDN_ToTecplot(Modflow)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -8982,7 +8923,7 @@ module MUSG !
 
         write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
         
-        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.cln.nvertex,', E=',Modflow.cln.nCell,', datapacking=block, &
+        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.cln.nNodes,', E=',Modflow.cln.nCells,', datapacking=block, &
             zonetype=felineseg, VARLOCATION=([4,5,6]=CELLCENTERED)'
         
         TMPStr=', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'
@@ -8998,30 +8939,30 @@ module MUSG !
         
         
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.cln.x(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.cln.x(i),i=1,Modflow.cln.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.cln.y(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.cln.y(i),i=1,Modflow.cln.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.cln.z(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.cln.z(i),i=1,Modflow.cln.nNodes)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.cln.lay(i),i=1,Modflow.cln.nCell)
+        write(FNum,'(5i8)') (Modflow.cln.lay(i),i=1,Modflow.cln.nCells)
         write(FNum,'(a)') '# head'
-        write(FNum,'(5e20.12)') (Modflow.cln.head(i,1),i=1,Modflow.cln.nCell)
+        write(FNum,'(5e20.12)') (Modflow.cln.head(i,1),i=1,Modflow.cln.nCells)
         write(FNum,'(a)') '# saturation'
-        write(FNum,'(5e20.12)') (Modflow.cln.sat(i,1),i=1,Modflow.cln.nCell)
+        write(FNum,'(5e20.12)') (Modflow.cln.sat(i,1),i=1,Modflow.cln.nCells)
         
-        do i=1,Modflow.cln.nCell
-            write(FNum,'(8i8)') (Modflow.cln.ivertex(j,i),j=1,Modflow.cln.m)
+        do i=1,Modflow.cln.nCells
+            write(FNum,'(8i8)') (Modflow.cln.iNode(j,i),j=1,Modflow.cln.nNodesPerCell)
         end do
        
         
         do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.cln.nvertex,', E=',Modflow.cln.nCell,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CLN" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.cln.nNodes,', E=',Modflow.cln.nCells,', datapacking=block, &
             zonetype=felineseg, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             write(FNum,'(a)') '# head'
-            write(FNum,'(5e20.12)') (Modflow.cln.head(i,j),i=1,Modflow.cln.nCell)
+            write(FNum,'(5e20.12)') (Modflow.cln.head(i,j),i=1,Modflow.cln.nCells)
             write(FNum,'(a)') '# sat'
-            write(FNum,'(5e20.12)') (Modflow.cln.sat(i,j),i=1,Modflow.cln.nCell)
+            write(FNum,'(5e20.12)') (Modflow.cln.sat(i,j),i=1,Modflow.cln.nCells)
         enddo
         
         call FreeUnit(FNum)
@@ -9030,7 +8971,7 @@ module MUSG !
     
     subroutine MUSG_SWF_HDS_DDN_ToTecplot(Modflow)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -9051,7 +8992,7 @@ module MUSG !
 
         write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
         
-        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="SWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.swf.nvertex,', E=',Modflow.swf.nCell,', datapacking=block, &
+        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="SWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.swf.nNodes,', E=',Modflow.swf.nCells,', datapacking=block, &
             zonetype=fequadrilateral, VARLOCATION=([4,5,6]=CELLCENTERED)'
         
         TMPStr=', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'
@@ -9068,151 +9009,153 @@ module MUSG !
         
         
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.swf.x(i),i=1,Modflow.swf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.swf.x(i),i=1,Modflow.swf.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.swf.y(i),i=1,Modflow.swf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.swf.y(i),i=1,Modflow.swf.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.swf.z(i),i=1,Modflow.swf.nvertex)
+        write(FNum,'(5e20.12)') (Modflow.swf.z(i),i=1,Modflow.swf.nNodes)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.swf.lay(i),i=1,Modflow.swf.nCell)
+        write(FNum,'(5i8)') (Modflow.swf.lay(i),i=1,Modflow.swf.nCells)
         write(FNum,'(a)') '# head'
-        write(FNum,'(5e20.12)') (Modflow.swf.head(i,1),i=1,Modflow.swf.nCell)
+        write(FNum,'(5e20.12)') (Modflow.swf.head(i,1),i=1,Modflow.swf.nCells)
         write(FNum,'(a)') '# saturation'
-        write(FNum,'(5e20.12)') (Modflow.swf.sat(i,1),i=1,Modflow.swf.nCell)
+        write(FNum,'(5e20.12)') (Modflow.swf.sat(i,1),i=1,Modflow.swf.nCells)
         
-        do i=1,Modflow.swf.nCell
-            write(FNum,'(8i8)') (Modflow.swf.ivertex(j,i),j=1,Modflow.swf.m)
+        do i=1,Modflow.swf.nCells
+            write(FNum,'(8i8)') (Modflow.swf.iNode(j,i),j=1,Modflow.swf.nNodesPerCell)
         end do
        
         
         do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="SWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.swf.nvertex,', E=',Modflow.swf.nCell,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="SWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.swf.nNodes,', E=',Modflow.swf.nCells,', datapacking=block, &
             zonetype=fequadrilateral, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             write(FNum,'(a)') '# head'
-            write(FNum,'(5e20.12)') (Modflow.swf.head(i,j),i=1,Modflow.swf.nCell)
+            write(FNum,'(5e20.12)') (Modflow.swf.head(i,j),i=1,Modflow.swf.nCells)
             write(FNum,'(a)') '# sat'
-            write(FNum,'(5e20.12)') (Modflow.swf.sat(i,j),i=1,Modflow.swf.nCell)
+            write(FNum,'(5e20.12)') (Modflow.swf.sat(i,j),i=1,Modflow.swf.nCells)
         enddo
         
         call FreeUnit(FNum)
 
     end subroutine MUSG_SWF_HDS_DDN_ToTecplot
 
-    subroutine MUSG_GWF_CBB_ToTecplot(Modflow)
-        implicit none
-        type (MUSG_Project) Modflow
-
-        integer :: Fnum
-        character(MAXLBL) :: FName
-
-        integer :: i, j, nvar
-
-      !  if(.not. Modflow.gwf.have_mesh) then
-		    !call ErrMsg('ERROR: no mesh information')
-		    !stop
-      !  endif
-        
-        ! tecplot output file
-        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.GWF.CBB.tecplot.dat'
-        call OpenAscii(FNum,FName)
-        call Msg( 'To File: '//trim(FName))
-
-        write(FNum,*) 'Title = "Modflow CBB file Outputs "'
-
-        VarSTR='variables="X","Y","Z","Layer",'
-        nVar=4
-        if(allocated(Modflow.gwf.cbb_STORAGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Storage",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Constant head",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.gwf.cbb_DRAINS)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Drains",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.gwf.cbb_RECHARGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Recharge",'
-            nVar=nVar+1
-        endif
-        
-        write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
-            
-        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nvertex,', E=',Modflow.gwf.nCell,', datapacking=block, &
-            zonetype=febrick'
-        
-        CellCenteredSTR=', VARLOCATION=([4'
-        if(nVar.ge.5) then
-            do j=5,nVar
-                write(str1,'(i1)') j
-                CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//','//str1
-            end do
-        endif
-        CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
-        
-        write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))//&
-            ', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
-            ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
-
-        write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nvertex)
-        write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nvertex)
-        write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nvertex)
-        write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.gwf.lay(i),i=1,Modflow.gwf.nCell)
-        if(allocated(Modflow.gwf.cbb_STORAGE)) then
-            write(FNum,'(a)') '# storage'
-            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_STORAGE(i,1),i=1,Modflow.gwf.nCell)
-        endif
-        if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
-            write(FNum,'(a)') '# constant head'
-            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_CONSTANT_HEAD(i,1),i=1,Modflow.gwf.nCell)
-        endif        
-        if(allocated(Modflow.gwf.cbb_DRAINS)) then
-            write(FNum,'(a)') '# drains'
-            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_DRAINS(i,1),i=1,Modflow.gwf.nCell)
-        endif        
-        if(allocated(Modflow.gwf.cbb_RECHARGE)) then
-            write(FNum,'(a)') '# recharge'
-            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_RECHARGE(i,1),i=1,Modflow.gwf.nCell)
-        endif        
-        
-        do i=1,Modflow.gwf.nCell
-            write(FNum,'(8i8)') (Modflow.gwf.ivertex(j,i),j=1,Modflow.gwf.m)
-        end do
-       
-        do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.gwf.nvertex,', E=',Modflow.gwf.nCell,', datapacking=block, &
-            zonetype=febrick,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
-            if(allocated(Modflow.gwf.cbb_STORAGE)) then
-                write(FNum,'(a)') '# storage'
-                write(FNum,'(5e20.12)') (Modflow.gwf.cbb_STORAGE(i,j),i=1,Modflow.gwf.nCell)
-            endif
-            if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
-                write(FNum,'(a)') '# constant head'
-                write(FNum,'(5e20.12)') (Modflow.gwf.cbb_CONSTANT_HEAD(i,j),i=1,Modflow.gwf.nCell)
-            endif        
-            if(allocated(Modflow.gwf.cbb_DRAINS)) then
-                write(FNum,'(a)') '# drains'
-                write(FNum,'(5e20.12)') (Modflow.gwf.cbb_DRAINS(i,j),i=1,Modflow.gwf.nCell)
-            endif        
-            if(allocated(Modflow.gwf.cbb_RECHARGE)) then
-                write(FNum,'(a)') '# recharge'
-                write(FNum,'(5e20.12)') (Modflow.gwf.cbb_RECHARGE(i,j),i=1,Modflow.gwf.nCell)
-            endif        
-        enddo
-        
-        call FreeUnit(FNum)
-
-    end subroutine MUSG_GWF_CBB_ToTecplot
+    !subroutine MUSG_GWF_CBB_ToTecplot(Modflow)
+    !    implicit none
+    !    type (ModflowProject) Modflow
+    !
+    !    integer :: Fnum
+    !    character(MAXLBL) :: FName
+    !
+    !    integer :: i, j, nvar
+    !
+    !  !  if(.not. Modflow.gwf.have_mesh) then
+		  !  !call ErrMsg('ERROR: no mesh information')
+		  !  !stop
+    !  !  endif
+    !    
+    !    ! tecplot output file
+    !    FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.GWF.CBB.tecplot.dat'
+    !    call OpenAscii(FNum,FName)
+    !    call Msg( 'To File: '//trim(FName))
+    !
+    !    write(FNum,*) 'Title = "Modflow CBB file Outputs "'
+    !
+    !    VarSTR='variables="X","Y","Z","Layer",'
+    !    nVar=4
+    !    if(allocated(Modflow.gwf.cbb_STORAGE)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Storage",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Constant head",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.gwf.cbb_DRAINS)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Drains",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.gwf.cbb_RECHARGE)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Recharge",'
+    !        nVar=nVar+1
+    !    endif
+    !    
+    !    write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
+    !        
+    !    write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
+    !        zonetype=febrick'
+    !
+    !    CellCenteredSTR=', VARLOCATION=([4'
+    !    if(nVar.ge.5) then
+    !        do j=5,nVar
+    !            write(str1,'(i1)') j
+    !            CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//','//str1
+    !        end do
+    !    endif
+    !    CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
+    !    
+    !    write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))//&
+    !        ', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
+    !        ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
+    !
+    !    write(FNum,'(a)') '# x'
+    !    write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nNodes)
+    !    write(FNum,'(a)') '# y'
+    !    write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nNodes)
+    !    write(FNum,'(a)') '# z'
+    !    write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nNodes)
+    !    write(FNum,'(a)') '# layer'
+    !    write(FNum,'(5i8)') (Modflow.gwf.lay(i),i=1,Modflow.gwf.nCells)
+    !    if(allocated(Modflow.gwf.cbb_STORAGE)) then
+    !        write(FNum,'(a)') '# storage'
+    !        write(FNum,'(5e20.12)') (Modflow.gwf.cbb_STORAGE(i,1),i=1,Modflow.gwf.nCells)
+    !    endif
+    !    if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
+    !        write(FNum,'(a)') '# constant head'
+    !        write(FNum,'(5e20.12)') (Modflow.gwf.cbb_CONSTANT_HEAD(i,1),i=1,Modflow.gwf.nCells)
+    !    endif        
+    !    if(allocated(Modflow.gwf.cbb_DRAINS)) then
+    !        write(FNum,'(a)') '# drains'
+    !        write(FNum,'(5e20.12)') (Modflow.gwf.cbb_DRAINS(i,1),i=1,Modflow.gwf.nCells)
+    !    endif        
+    !    if(allocated(Modflow.gwf.cbb_RECHARGE)) then
+    !        write(FNum,'(a)') '# recharge'
+    !        write(FNum,'(5e20.12)') (Modflow.gwf.cbb_RECHARGE(i,1),i=1,Modflow.gwf.nCells)
+    !    endif        
+    !    
+    !    do i=1,Modflow.gwf.nCells
+    !        write(FNum,'(8i8)') (Modflow.gwf.iNode(j,i),j=1,Modflow.gwf.nNodesPerCell)
+    !    end do
+    !   
+    !    do j=2,Modflow.ntime
+    !        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
+    !        zonetype=febrick,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
+    !        if(allocated(Modflow.gwf.cbb_STORAGE)) then
+    !            write(FNum,'(a)') '# storage'
+    !            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_STORAGE(i,j),i=1,Modflow.gwf.nCells)
+    !        endif
+    !        if(allocated(Modflow.gwf.cbb_CONSTANT_HEAD)) then
+    !            write(FNum,'(a)') '# constant head'
+    !            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_CONSTANT_HEAD(i,j),i=1,Modflow.gwf.nCells)
+    !        endif        
+    !        if(allocated(Modflow.gwf.cbb_DRAINS)) then
+    !            write(FNum,'(a)') '# drains'
+    !            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_DRAINS(i,j),i=1,Modflow.gwf.nCells)
+    !        endif        
+    !        if(allocated(Modflow.gwf.cbb_RECHARGE)) then
+    !            write(FNum,'(a)') '# recharge'
+    !            write(FNum,'(5e20.12)') (Modflow.gwf.cbb_RECHARGE(i,j),i=1,Modflow.gwf.nCells)
+    !        endif        
+    !    enddo
+    !    
+    !    call FreeUnit(FNum)
+    !
+    !end subroutine MUSG_GWF_CBB_ToTecplot
     
-    subroutine MUSG_CLN_CBB_ToTecplot(Modflow)
+    subroutine MUSG_CBB_ToTecplot(Modflow, domain)
         implicit none
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
+        type(ModflowDomain) domain
+
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -9225,35 +9168,51 @@ module MUSG !
       !  endif
         
         ! tecplot output file
-        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.CLN.CBB.tecplot.dat'
+        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.'//domain.name//'.CBB.tecplot.dat'
         call OpenAscii(FNum,FName)
         call Msg( 'To File: '//trim(FName))
 
-        write(FNum,*) 'Title = "Modflow CBB file Outputs "'
+        write(FNum,*) 'Title = "CELL-BY-CELL FLOWS: '//Modflow.Prefix(:len_trim(Modflow.Prefix))//'"'
 
         VarSTR='variables="X","Y","Z","Layer",'
         nVar=4
-        if(allocated(Modflow.cln.cbb_STORAGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Storage",'
+        if(allocated(domain.cbb_STORAGE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To STORAGE",'
             nVar=nVar+1
         endif
-        if(allocated(Modflow.cln.cbb_CONSTANT_HEAD)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Constant head",'
+        if(allocated(domain.cbb_CONSTANT_HEAD)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To CONSTANT_HEAD",'
             nVar=nVar+1
         endif
-        if(allocated(Modflow.cln.cbb_DRAINS)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Drains",'
+        if(allocated(domain.cbb_RECHARGE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To RECHARGE",'
             nVar=nVar+1
         endif
-        if(allocated(Modflow.cln.cbb_RECHARGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Recharge",'
+        if(allocated(domain.cbb_DRAINS)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To DRAINS",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_CLN)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To CLN",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_SWF)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To SWF",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_GWF)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To GWF",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_FLOW_FACE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To FLOW_FACES",'
             nVar=nVar+1
         endif
         
         write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
             
-        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.cln.nvertex,', E=',Modflow.cln.nCell,', datapacking=block, &
-            zonetype=felineseg'
+        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="'//domain.name//'" SOLUTIONTIME=',modflow.TIMOT(1),',N=',domain.nNodes,', E=',domain.nCells,&
+            ', datapacking=block, zonetype='//domain.ElementType(:len_trim(domain.ElementType))
         
         CellCenteredSTR=', VARLOCATION=([4'
         if(nVar.ge.5) then
@@ -9264,171 +9223,208 @@ module MUSG !
         endif
         CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
 
-        write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))
+        write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))//&
+            ', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
+            ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.cln.x(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (domain.x(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.cln.y(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (domain.y(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.cln.z(i),i=1,Modflow.cln.nvertex)
+        write(FNum,'(5e20.12)') (domain.z(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.cln.lay(i),i=1,Modflow.cln.nCell)
-        if(allocated(Modflow.cln.cbb_STORAGE)) then
+        write(FNum,'(5i8)') (domain.lay(i),i=1,domain.nCells)
+        if(allocated(domain.cbb_STORAGE)) then
             write(FNum,'(a)') '# storage'
-            write(FNum,'(5e20.12)') (Modflow.cln.cbb_STORAGE(i,1),i=1,Modflow.cln.nCell)
+            write(FNum,'(5e20.12)') (domain.cbb_STORAGE(i,1),i=1,domain.nCells)
         endif
-        if(allocated(Modflow.cln.cbb_CONSTANT_HEAD)) then
+        if(allocated(domain.cbb_CONSTANT_HEAD)) then
             write(FNum,'(a)') '# constant head'
-            write(FNum,'(5e20.12)') (Modflow.cln.cbb_CONSTANT_HEAD(i,1),i=1,Modflow.cln.nCell)
+            write(FNum,'(5e20.12)') (domain.cbb_CONSTANT_HEAD(i,1),i=1,domain.nCells)
         endif        
-        if(allocated(Modflow.cln.cbb_DRAINS)) then
-            write(FNum,'(a)') '# drains'
-            write(FNum,'(5e20.12)') (Modflow.cln.cbb_DRAINS(i,1),i=1,Modflow.cln.nCell)
-        endif        
-        if(allocated(Modflow.cln.cbb_RECHARGE)) then
+        if(allocated(domain.cbb_RECHARGE)) then
             write(FNum,'(a)') '# recharge'
-            write(FNum,'(5e20.12)') (Modflow.cln.cbb_RECHARGE(i,1),i=1,Modflow.cln.nCell)
+            write(FNum,'(5e20.12)') (domain.cbb_RECHARGE(i,1),i=1,domain.nCells)
         endif        
-        
-        do i=1,Modflow.cln.nCell
-            write(FNum,'(8i8)') (Modflow.cln.ivertex(j,i),j=1,Modflow.cln.m)
+        if(allocated(domain.cbb_DRAINS)) then
+            write(FNum,'(a)') '# drains'
+            write(FNum,'(5e20.12)') (domain.cbb_DRAINS(i,1),i=1,domain.nCells)
+        endif        
+        if(allocated(domain.cbb_CLN)) then
+            write(FNum,'(a)') '# cln'
+            write(FNum,'(5e20.12)') (domain.cbb_CLN(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_SWF)) then
+            write(FNum,'(a)') '# swf'
+            write(FNum,'(5e20.12)') (domain.cbb_SWF(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_GWF)) then
+            write(FNum,'(a)') '# gwf'
+            write(FNum,'(5e20.12)') (domain.cbb_GWF(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_FLOW_FACE)) then
+            write(FNum,'(a)') '# flow_face'
+            write(FNum,'(5e20.12)') (domain.cbb_FLOW_FACE(i,1),i=1,domain.nCells)
+        endif
+        !
+        do i=1,domain.nCells
+            write(FNum,'(8i8)') (domain.iNode(j,i),j=1,domain.nNodesPerCell)
         end do
        
         do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.cln.nvertex,', E=',Modflow.cln.nCell,', datapacking=block, &
-            zonetype=felineseg,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
-            if(allocated(Modflow.cln.cbb_STORAGE)) then
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="'//domain.name//'" SOLUTIONTIME=',modflow.TIMOT(j),',N=',domain.nNodes,', E=',domain.nCells,&
+            ', datapacking=block, zonetype='//domain.ElementType(:len_trim(domain.ElementType))//','//CellCenteredSTR(:len_trim(CellCenteredSTR))&
+            //', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
+            if(allocated(domain.cbb_STORAGE)) then
                 write(FNum,'(a)') '# storage'
-                write(FNum,'(5e20.12)') (Modflow.cln.cbb_STORAGE(i,j),i=1,Modflow.cln.nCell)
+                write(FNum,'(5e20.12)') (domain.cbb_STORAGE(i,j),i=1,domain.nCells)
             endif
-            if(allocated(Modflow.cln.cbb_CONSTANT_HEAD)) then
+            if(allocated(domain.cbb_CONSTANT_HEAD)) then
                 write(FNum,'(a)') '# constant head'
-                write(FNum,'(5e20.12)') (Modflow.cln.cbb_CONSTANT_HEAD(i,j),i=1,Modflow.cln.nCell)
+                write(FNum,'(5e20.12)') (domain.cbb_CONSTANT_HEAD(i,j),i=1,domain.nCells)
             endif        
-            if(allocated(Modflow.cln.cbb_DRAINS)) then
+            if(allocated(domain.cbb_DRAINS)) then
                 write(FNum,'(a)') '# drains'
-                write(FNum,'(5e20.12)') (Modflow.cln.cbb_DRAINS(i,j),i=1,Modflow.cln.nCell)
+                write(FNum,'(5e20.12)') (domain.cbb_DRAINS(i,j),i=1,domain.nCells)
             endif        
-            if(allocated(Modflow.cln.cbb_RECHARGE)) then
+            if(allocated(domain.cbb_RECHARGE)) then
                 write(FNum,'(a)') '# recharge'
-                write(FNum,'(5e20.12)') (Modflow.cln.cbb_RECHARGE(i,j),i=1,Modflow.cln.nCell)
+                write(FNum,'(5e20.12)') (domain.cbb_RECHARGE(i,j),i=1,domain.nCells)
             endif        
+            if(allocated(domain.cbb_CLN)) then
+                write(FNum,'(a)') '# cln'
+                write(FNum,'(5e20.12)') (domain.cbb_CLN(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_SWF)) then
+                write(FNum,'(a)') '# swf'
+                write(FNum,'(5e20.12)') (domain.cbb_SWF(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_GWF)) then
+                write(FNum,'(a)') '# gwf'
+                write(FNum,'(5e20.12)') (domain.cbb_GWF(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_FLOW_FACE)) then
+                write(FNum,'(a)') '# flow_face'
+                write(FNum,'(5e20.12)') (domain.cbb_FLOW_FACE(i,j),i=1,domain.nCells)
+            endif
         enddo
         
         call FreeUnit(FNum)
 
-    end subroutine MUSG_CLN_CBB_ToTecplot
+    end subroutine MUSG_CBB_ToTecplot
     
-    subroutine MUSG_SWF_CBB_ToTecplot(Modflow)
-        implicit none
-        type (MUSG_Project) Modflow
-
-        integer :: Fnum
-        character(MAXLBL) :: FName
-
-        integer :: i, j, nvar
-
-      !  if(.not. Modflow.swf.have_mesh) then
-		    !call ErrMsg('ERROR: no mesh information')
-		    !stop
-      !  endif
-        
-        ! tecplot output file
-        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.SWF.CBB.tecplot.dat'
-        call OpenAscii(FNum,FName)
-        call Msg( 'To File: '//trim(FName))
-
-        write(FNum,*) 'Title = "Modflow CBB file Outputs "'
-
-        VarSTR='variables="X","Y","Z","Layer",'
-        nVar=4
-        if(allocated(Modflow.swf.cbb_STORAGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Storage",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Constant head",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.swf.cbb_DRAINS)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Drains",'
-            nVar=nVar+1
-        endif
-        if(allocated(Modflow.swf.cbb_RECHARGE)) then
-            VarSTR=VarSTR(:len_trim(VarSTR))//'"Recharge",'
-            nVar=nVar+1
-        endif
-        
-        write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
-            
-        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.swf.nvertex,', E=',Modflow.swf.nCell,', datapacking=block, &
-            zonetype=fequadrilateral'
-        
-        CellCenteredSTR=', VARLOCATION=([4'
-        if(nVar.ge.5) then
-            do j=5,nVar
-                write(str1,'(i1)') j
-                CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//','//str1
-            end do
-        endif
-        CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
-
-        write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))
-
-        write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.swf.x(i),i=1,Modflow.swf.nvertex)
-        write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.swf.y(i),i=1,Modflow.swf.nvertex)
-        write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.swf.z(i),i=1,Modflow.swf.nvertex)
-        write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.swf.lay(i),i=1,Modflow.swf.nCell)
-        if(allocated(Modflow.swf.cbb_STORAGE)) then
-            write(FNum,'(a)') '# storage'
-            write(FNum,'(5e20.12)') (Modflow.swf.cbb_STORAGE(i,1),i=1,Modflow.swf.nCell)
-        endif
-        if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
-            write(FNum,'(a)') '# constant head'
-            write(FNum,'(5e20.12)') (Modflow.swf.cbb_CONSTANT_HEAD(i,1),i=1,Modflow.swf.nCell)
-        endif        
-        if(allocated(Modflow.swf.cbb_DRAINS)) then
-            write(FNum,'(a)') '# drains'
-            write(FNum,'(5e20.12)') (Modflow.swf.cbb_DRAINS(i,1),i=1,Modflow.swf.nCell)
-        endif        
-        if(allocated(Modflow.swf.cbb_RECHARGE)) then
-            write(FNum,'(a)') '# recharge'
-            write(FNum,'(5e20.12)') (Modflow.swf.cbb_RECHARGE(i,1),i=1,Modflow.swf.nCell)
-        endif        
-        
-        do i=1,Modflow.swf.nCell
-            write(FNum,'(8i8)') (Modflow.swf.ivertex(j,i),j=1,Modflow.swf.m)
-        end do
-       
-        do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.swf.nvertex,', E=',Modflow.swf.nCell,', datapacking=block, &
-            zonetype=fequadrilateral,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
-            if(allocated(Modflow.swf.cbb_STORAGE)) then
-                write(FNum,'(a)') '# storage'
-                write(FNum,'(5e20.12)') (Modflow.swf.cbb_STORAGE(i,j),i=1,Modflow.swf.nCell)
-            endif
-            if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
-                write(FNum,'(a)') '# constant head'
-                write(FNum,'(5e20.12)') (Modflow.swf.cbb_CONSTANT_HEAD(i,j),i=1,Modflow.swf.nCell)
-            endif        
-            if(allocated(Modflow.swf.cbb_DRAINS)) then
-                write(FNum,'(a)') '# drains'
-                write(FNum,'(5e20.12)') (Modflow.swf.cbb_DRAINS(i,j),i=1,Modflow.swf.nCell)
-            endif        
-            if(allocated(Modflow.swf.cbb_RECHARGE)) then
-                write(FNum,'(a)') '# recharge'
-                write(FNum,'(5e20.12)') (Modflow.swf.cbb_RECHARGE(i,j),i=1,Modflow.swf.nCell)
-            endif        
-        enddo
-        
-        call FreeUnit(FNum)
-
-    end subroutine MUSG_SWF_CBB_ToTecplot
+    !subroutine MUSG_SWF_CBB_ToTecplot(Modflow)
+    !    implicit none
+    !    type (ModflowProject) Modflow
+    !
+    !    integer :: Fnum
+    !    character(MAXLBL) :: FName
+    !
+    !    integer :: i, j, nvar
+    !
+    !  !  if(.not. Modflow.swf.have_mesh) then
+		  !  !call ErrMsg('ERROR: no mesh information')
+		  !  !stop
+    !  !  endif
+    !    
+    !    ! tecplot output file
+    !    FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.SWF.CBB.tecplot.dat'
+    !    call OpenAscii(FNum,FName)
+    !    call Msg( 'To File: '//trim(FName))
+    !
+    !    write(FNum,*) 'Title = "Modflow CBB file Outputs "'
+    !
+    !    VarSTR='variables="X","Y","Z","Layer",'
+    !    nVar=4
+    !    if(allocated(Modflow.swf.cbb_STORAGE)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Storage",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Constant head",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.swf.cbb_DRAINS)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Drains",'
+    !        nVar=nVar+1
+    !    endif
+    !    if(allocated(Modflow.swf.cbb_RECHARGE)) then
+    !        VarSTR=VarSTR(:len_trim(VarSTR))//'"Recharge",'
+    !        nVar=nVar+1
+    !    endif
+    !    
+    !    write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
+    !        
+    !    write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.swf.nNodes,', E=',Modflow.swf.nCells,', datapacking=block, &
+    !        zonetype=fequadrilateral'
+    !    
+    !    CellCenteredSTR=', VARLOCATION=([4'
+    !    if(nVar.ge.5) then
+    !        do j=5,nVar
+    !            write(str1,'(i1)') j
+    !            CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//','//str1
+    !        end do
+    !    endif
+    !    CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
+    !
+    !    write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))//&
+    !        ', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
+    !        ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
+    !
+    !    write(FNum,'(a)') '# x'
+    !    write(FNum,'(5e20.12)') (Modflow.swf.x(i),i=1,Modflow.swf.nNodes)
+    !    write(FNum,'(a)') '# y'
+    !    write(FNum,'(5e20.12)') (Modflow.swf.y(i),i=1,Modflow.swf.nNodes)
+    !    write(FNum,'(a)') '# z'
+    !    write(FNum,'(5e20.12)') (Modflow.swf.z(i),i=1,Modflow.swf.nNodes)
+    !    write(FNum,'(a)') '# layer'
+    !    write(FNum,'(5i8)') (Modflow.swf.lay(i),i=1,Modflow.swf.nCells)
+    !    if(allocated(Modflow.swf.cbb_STORAGE)) then
+    !        write(FNum,'(a)') '# storage'
+    !        write(FNum,'(5e20.12)') (Modflow.swf.cbb_STORAGE(i,1),i=1,Modflow.swf.nCells)
+    !    endif
+    !    if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
+    !        write(FNum,'(a)') '# constant head'
+    !        write(FNum,'(5e20.12)') (Modflow.swf.cbb_CONSTANT_HEAD(i,1),i=1,Modflow.swf.nCells)
+    !    endif        
+    !    if(allocated(Modflow.swf.cbb_DRAINS)) then
+    !        write(FNum,'(a)') '# drains'
+    !        write(FNum,'(5e20.12)') (Modflow.swf.cbb_DRAINS(i,1),i=1,Modflow.swf.nCells)
+    !    endif        
+    !    if(allocated(Modflow.swf.cbb_RECHARGE)) then
+    !        write(FNum,'(a)') '# recharge'
+    !        write(FNum,'(5e20.12)') (Modflow.swf.cbb_RECHARGE(i,1),i=1,Modflow.swf.nCells)
+    !    endif        
+    !    
+    !    do i=1,Modflow.swf.nCells
+    !        write(FNum,'(8i8)') (Modflow.swf.iNode(j,i),j=1,Modflow.swf.nNodesPerCell)
+    !    end do
+    !   
+    !    do j=2,Modflow.ntime
+    !        write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="CBB" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.swf.nNodes,', E=',Modflow.swf.nCells,', datapacking=block, &
+    !        zonetype=fequadrilateral,'//CellCenteredSTR(:len_trim(CellCenteredSTR))//', VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
+    !        if(allocated(Modflow.swf.cbb_STORAGE)) then
+    !            write(FNum,'(a)') '# storage'
+    !            write(FNum,'(5e20.12)') (Modflow.swf.cbb_STORAGE(i,j),i=1,Modflow.swf.nCells)
+    !        endif
+    !        if(allocated(Modflow.swf.cbb_CONSTANT_HEAD)) then
+    !            write(FNum,'(a)') '# constant head'
+    !            write(FNum,'(5e20.12)') (Modflow.swf.cbb_CONSTANT_HEAD(i,j),i=1,Modflow.swf.nCells)
+    !        endif        
+    !        if(allocated(Modflow.swf.cbb_DRAINS)) then
+    !            write(FNum,'(a)') '# drains'
+    !            write(FNum,'(5e20.12)') (Modflow.swf.cbb_DRAINS(i,j),i=1,Modflow.swf.nCells)
+    !        endif        
+    !        if(allocated(Modflow.swf.cbb_RECHARGE)) then
+    !            write(FNum,'(a)') '# recharge'
+    !            write(FNum,'(5e20.12)') (Modflow.swf.cbb_RECHARGE(i,j),i=1,Modflow.swf.nCells)
+    !        endif        
+    !    enddo
+    !    
+    !    call FreeUnit(FNum)
+    !
+    !end subroutine MUSG_SWF_CBB_ToTecplot
     
 
    
@@ -9437,7 +9433,7 @@ module MUSG !
     subroutine MUSG_Read_GWF_GSF(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: i, j
         
@@ -9458,31 +9454,35 @@ module MUSG !
         end do
 
         read(itmp,*) Modflow.gwf.meshtype
-        read(itmp,*) Modflow.gwf.nCell, Modflow.gwf.nLay, Modflow.gwf.iz, Modflow.gwf.ic
-        read(itmp,*) Modflow.gwf.nvertex
-        allocate(Modflow.gwf.x(Modflow.gwf.nvertex),Modflow.gwf.y(Modflow.gwf.nvertex),Modflow.gwf.z(Modflow.gwf.nvertex), stat=ialloc)
-        call AllocChk(ialloc,'gwf xyzvertex arrays')
+        read(itmp,*) Modflow.gwf.nCells, Modflow.gwf.nLayers, Modflow.gwf.iz, Modflow.gwf.ic
+        read(itmp,*) Modflow.gwf.nNodes
+        allocate(Modflow.gwf.x(Modflow.gwf.nNodes),Modflow.gwf.y(Modflow.gwf.nNodes),Modflow.gwf.z(Modflow.gwf.nNodes), stat=ialloc)
+        call AllocChk(ialloc,'gwf node coordinate arrays')
         Modflow.gwf.x = 0 ! automatic initialization
         Modflow.gwf.y = 0 ! automatic initialization
         Modflow.gwf.z = 0 ! automatic initialization
         
-        read(itmp,*) (Modflow.gwf.x(i),Modflow.gwf.y(i),Modflow.gwf.z(i),i=1,Modflow.gwf.nvertex)
+        read(itmp,*) (Modflow.gwf.x(i),Modflow.gwf.y(i),Modflow.gwf.z(i),i=1,Modflow.gwf.nNodes)
 
-        ! determine the number of nodes per cell (Modflow.gwf.m)
-        read(itmp,*) i1,r1,r2,r3,i2,Modflow.gwf.m
+        ! determine the number of nodes per cell (Modflow.gwf.nNodesPerCell)
+        read(itmp,*) i1,r1,r2,r3,i2,Modflow.gwf.nNodesPerCell
         backspace(itmp)
-        allocate(Modflow.gwf.ivertex(Modflow.gwf.m,Modflow.gwf.nCell),stat=ialloc)
-        allocate(Modflow.gwf.xCell(Modflow.gwf.nCell),Modflow.gwf.yCell(Modflow.gwf.nCell),Modflow.gwf.zCell(Modflow.gwf.nCell),Modflow.gwf.lay(Modflow.gwf.nCell),stat=ialloc)
-        call AllocChk(ialloc,'gwf ivertex, xyzcell arrays')
-        Modflow.gwf.ivertex = 0 ! automatic initialization
-        do i=1,Modflow.gwf.nCell
-        read(itmp,*) i1,Modflow.gwf.xCell(i),Modflow.gwf.yCell(i),Modflow.gwf.zCell(i),Modflow.gwf.lay(i),i2,(Modflow.gwf.ivertex(j,i),j=1,Modflow.gwf.m)
+ 
+        allocate(Modflow.gwf.iNode(Modflow.gwf.nNodesPerCell,Modflow.gwf.nCells),stat=ialloc)
+        call AllocChk(ialloc,'gwf iNode arrays')
+        
+        allocate(Modflow.gwf.xCell(Modflow.gwf.nCells),Modflow.gwf.yCell(Modflow.gwf.nCells),Modflow.gwf.zCell(Modflow.gwf.nCells),Modflow.gwf.lay(Modflow.gwf.nCells),stat=ialloc)
+        call AllocChk(ialloc,'gwf cell coordinate arrays')
+        
+        Modflow.gwf.iNode = 0 ! automatic initialization
+        do i=1,Modflow.gwf.nCells
+        read(itmp,*) i1,Modflow.gwf.xCell(i),Modflow.gwf.yCell(i),Modflow.gwf.zCell(i),Modflow.gwf.lay(i),i2,(Modflow.gwf.iNode(j,i),j=1,Modflow.gwf.nNodesPerCell)
         end do
 	    call freeunit(itmp)
         
         Modflow.gwf.have_mesh=.true.
-        write(TmpSTR,'(i10)') Modflow.gwf.nCell 
-        call Msg('nCell: '//TmpSTR)
+        write(TmpSTR,'(i10)') Modflow.gwf.nCells 
+        call Msg('nCells: '//TmpSTR)
 
 	    return
     end subroutine MUSG_Read_GWF_GSF
@@ -9490,7 +9490,7 @@ module MUSG !
     subroutine MUSG_Read_CLN_GSF(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: i, j
         
@@ -9511,33 +9511,36 @@ module MUSG !
         end do
 
         read(itmp,*) Modflow.cln.meshtype
-        read(itmp,*) Modflow.cln.nCell, Modflow.cln.nLay, Modflow.cln.iz, Modflow.cln.ic
-        read(itmp,*) Modflow.cln.nvertex
-        allocate(Modflow.cln.x(Modflow.cln.nvertex),Modflow.cln.y(Modflow.cln.nvertex),Modflow.cln.z(Modflow.cln.nvertex), stat=ialloc)
-        call AllocChk(ialloc,'cln xyzvertex arrays')
+        read(itmp,*) Modflow.cln.nCells, Modflow.cln.nLayers, Modflow.cln.iz, Modflow.cln.ic
+        read(itmp,*) Modflow.cln.nNodes
+        allocate(Modflow.cln.x(Modflow.cln.nNodes),Modflow.cln.y(Modflow.cln.nNodes),Modflow.cln.z(Modflow.cln.nNodes), stat=ialloc)
+        call AllocChk(ialloc,'cln node coordinate arrays')
         Modflow.cln.x = 0 ! automatic initialization
         Modflow.cln.y = 0 ! automatic initialization
         Modflow.cln.z = 0 ! automatic initialization
         
-        read(itmp,*) (Modflow.cln.x(i),Modflow.cln.y(i),Modflow.cln.z(i),i=1,Modflow.cln.nvertex)
+        read(itmp,*) (Modflow.cln.x(i),Modflow.cln.y(i),Modflow.cln.z(i),i=1,Modflow.cln.nNodes)
 
-        ! determine the number of nodes per cell (Modflow.cln.m)
-        read(itmp,*) i1,r1,r2,r3,i2,Modflow.cln.m
+        ! determine the number of nodes per cell (Modflow.cln.nNodesPerCell)
+        read(itmp,*) i1,r1,r2,r3,i2,Modflow.cln.nNodesPerCell
         backspace(itmp)
-        allocate(Modflow.cln.ivertex(Modflow.cln.m,Modflow.cln.nCell),stat=ialloc)
-        allocate(Modflow.cln.xCell(Modflow.cln.nCell),Modflow.cln.yCell(Modflow.cln.nCell),Modflow.cln.zCell(Modflow.cln.nCell),Modflow.cln.lay(Modflow.cln.nCell),stat=ialloc)
-        call AllocChk(ialloc,'cln ivertex, xyzcell arrays')
-        Modflow.cln.ivertex = 0 ! automatic initialization
-        do i=1,Modflow.cln.nCell
-        read(itmp,*) i1,Modflow.cln.xCell(i),Modflow.cln.yCell(i),Modflow.cln.zCell(i),Modflow.cln.lay(i),i2,(Modflow.cln.ivertex(j,i),j=1,Modflow.cln.m)
+
+        allocate(Modflow.cln.iNode(Modflow.cln.nNodesPerCell,Modflow.cln.nCells),stat=ialloc)
+        call AllocChk(ialloc,'cln iNode array')
+        
+        allocate(Modflow.cln.xCell(Modflow.cln.nCells),Modflow.cln.yCell(Modflow.cln.nCells),Modflow.cln.zCell(Modflow.cln.nCells),Modflow.cln.lay(Modflow.cln.nCells),stat=ialloc)
+        call AllocChk(ialloc,'cln cell coordinate arrays')
+
+        Modflow.cln.iNode = 0 ! automatic initialization
+        do i=1,Modflow.cln.nCells
+            read(itmp,*) i1,Modflow.cln.xCell(i),Modflow.cln.yCell(i),Modflow.cln.zCell(i),Modflow.cln.lay(i),i2,(Modflow.cln.iNode(j,i),j=1,Modflow.cln.nNodesPerCell)
         end do
 	    call freeunit(itmp)
         
         Modflow.cln.have_mesh=.true.
 
-        Modflow.cln.have_mesh=.true.
-        write(TmpSTR,'(i10)') Modflow.cln.nCell 
-        call Msg('nCell: '//TmpSTR)
+        write(TmpSTR,'(i10)') Modflow.cln.nCells 
+        call Msg('nCells: '//TmpSTR)
 
 
 	    return
@@ -9546,7 +9549,7 @@ module MUSG !
     subroutine MUSG_Read_SWF_GSF(Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         integer :: i, j
         
@@ -9567,34 +9570,34 @@ module MUSG !
         end do
 
         read(itmp,*) Modflow.swf.meshtype
-        read(itmp,*) Modflow.swf.nCell, Modflow.swf.nLay, Modflow.swf.iz, Modflow.swf.ic
-        read(itmp,*) Modflow.swf.nvertex
-        allocate(Modflow.swf.x(Modflow.swf.nvertex),Modflow.swf.y(Modflow.swf.nvertex),Modflow.swf.z(Modflow.swf.nvertex), stat=ialloc)
-        call AllocChk(ialloc,'swf xyzvertex arrays')
+        read(itmp,*) Modflow.swf.nCells, Modflow.swf.nLayers, Modflow.swf.iz, Modflow.swf.ic
+        read(itmp,*) Modflow.swf.nNodes
+        allocate(Modflow.swf.x(Modflow.swf.nNodes),Modflow.swf.y(Modflow.swf.nNodes),Modflow.swf.z(Modflow.swf.nNodes), stat=ialloc)
+        call AllocChk(ialloc,'swf node coordinate arrays')
         Modflow.swf.x = 0 ! automatic initialization
         Modflow.swf.y = 0 ! automatic initialization
         Modflow.swf.z = 0 ! automatic initialization
         
-        read(itmp,*) (Modflow.swf.x(i),Modflow.swf.y(i),Modflow.swf.z(i),i=1,Modflow.swf.nvertex)
+        read(itmp,*) (Modflow.swf.x(i),Modflow.swf.y(i),Modflow.swf.z(i),i=1,Modflow.swf.nNodes)
         
-        ! determine the number of nodes per cell (Modflow.swf.m)
-        read(itmp,*) i1,r1,r2,r3,i2,Modflow.swf.m
+        ! determine the number of nodes per cell (Modflow.swf.nNodesPerCell)
+        read(itmp,*) i1,r1,r2,r3,i2,Modflow.swf.nNodesPerCell
         backspace(itmp)
-        allocate(Modflow.swf.ivertex(Modflow.swf.m,Modflow.swf.nCell),stat=ialloc)
-        allocate(Modflow.swf.xCell(Modflow.swf.nCell),Modflow.swf.yCell(Modflow.swf.nCell),Modflow.swf.zCell(Modflow.swf.nCell),Modflow.swf.lay(Modflow.swf.nCell),stat=ialloc)
-        call AllocChk(ialloc,'swf ivertex, xyzcell arrays')
+        allocate(Modflow.swf.iNode(Modflow.swf.nNodesPerCell,Modflow.swf.nCells),stat=ialloc)
+        allocate(Modflow.swf.xCell(Modflow.swf.nCells),Modflow.swf.yCell(Modflow.swf.nCells),Modflow.swf.zCell(Modflow.swf.nCells),Modflow.swf.lay(Modflow.swf.nCells),stat=ialloc)
+        call AllocChk(ialloc,'swf iNode, xyzcell arrays')
         
-        Modflow.swf.ivertex = 0 ! automatic initialization
-        do i=1,Modflow.swf.nCell
-            read(itmp,*) i1,Modflow.swf.xCell(i),Modflow.swf.yCell(i),Modflow.swf.zCell(i),Modflow.swf.lay(i),i2,(Modflow.swf.ivertex(j,i),j=1,Modflow.swf.m)
+        Modflow.swf.iNode = 0 ! automatic initialization
+        do i=1,Modflow.swf.nCells
+            read(itmp,*) i1,Modflow.swf.xCell(i),Modflow.swf.yCell(i),Modflow.swf.zCell(i),Modflow.swf.lay(i),i2,(Modflow.swf.iNode(j,i),j=1,Modflow.swf.nNodesPerCell)
         end do
 	    call freeunit(itmp)
         
         Modflow.swf.have_mesh=.true.
 
         Modflow.swf.have_mesh=.true.
-        write(TmpSTR,'(i10)') Modflow.swf.nCell 
-        call Msg('nCell: '//TmpSTR)
+        write(TmpSTR,'(i10)') Modflow.swf.nCells 
+        call Msg('nCells: '//TmpSTR)
 
 
 	    return
@@ -9603,7 +9606,7 @@ module MUSG !
     subroutine MUSG_ScanFile(FNum,Modflow)
         implicit none
 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
         
         integer :: Fnum
         integer :: i
@@ -9648,7 +9651,7 @@ module MUSG !
         implicit none
         
         
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 
         character(*) :: PKey
         
@@ -9669,7 +9672,7 @@ module MUSG !
     end subroutine AddToScan
     
      subroutine GrowKeyWordArray(Modflow,ndim) !--- during run if necessary 
-        type (MUSG_Project) Modflow
+        type (ModflowProject) Modflow
 	    real, parameter :: nf_mult=2
 	    integer :: ndim_new
 	    integer :: ndim,i
@@ -11056,20 +11059,20 @@ module MUSG !
 !        character(MAXSTRING) :: line
 !        integer :: i1
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
 !        call Msg( 'Head file: '//FName)
 !
-!        allocate(Modflow.gwf.head(Modflow.gwf.nCell,1))
+!        allocate(Modflow.gwf.head(Modflow.gwf.nCells,1))
 !
 !	    if(status /= 0) then
 !		    call ErrMsg('FILE ERROR: '//fname)
 !		    stop
 !        endif
 !        read(itmp,*) line
-!	    read(itmp,*) (i1, Modflow.gwf.head(j,1),j=1,Modflow.gwf.nCell)
+!	    read(itmp,*) (i1, Modflow.gwf.head(j,1),j=1,Modflow.gwf.nCells)
 !	    call freeunit(FNum)
 !
 !        continue
@@ -11082,7 +11085,7 @@ module MUSG !
 !    subroutine MUSG_ReadAsciiKxFile(FnumTG,Modflow)
 !        implicit none
 !
-!        integer :: j,m
+!        integer :: j,nNodesPerCell
 !        integer :: FnumTG
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
@@ -11091,31 +11094,31 @@ module MUSG !
 !        real(dr) :: bot
 !
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
 !        call Msg( 'Kx file: '//FName)
 !
-!        allocate(Modflow.Kx(Modflow.gwf.nCell))
-!        allocate(Modflow.Thick(Modflow.gwf.nCell))
-!        allocate(Modflow.T(Modflow.gwf.nCell))
+!        allocate(Modflow.Kx(Modflow.gwf.nCells))
+!        allocate(Modflow.Thick(Modflow.gwf.nCells))
+!        allocate(Modflow.T(Modflow.gwf.nCells))
 !
 !	    if(status /= 0) then
 !		    call ErrMsg('FILE ERROR: '//fname)
 !		    stop
 !        endif
-!	    read(itmp,*) (Modflow.Kx(j),j=1,Modflow.gwf.nCell)
+!	    read(itmp,*) (Modflow.Kx(j),j=1,Modflow.gwf.nCells)
 !	    call freeunit(FNum)
 !        
-!        do j=1,Modflow.gwf.nCell
+!        do j=1,Modflow.gwf.nCells
 !            top=0.0
 !            bot=0.0
-!            do m=1,4
-!                top=top+Modflow.gwf.z(Modflow.gwf.ivertex(m,j))/4.0d0
+!            do nNodesPerCell=1,4
+!                top=top+Modflow.gwf.z(Modflow.gwf.iNode(nNodesPerCell,j))/4.0d0
 !            end do
-!            do m=5,8
-!                bot=bot+Modflow.gwf.z(Modflow.gwf.ivertex(m,j))/4.0d0
+!            do nNodesPerCell=5,8
+!                bot=bot+Modflow.gwf.z(Modflow.gwf.iNode(nNodesPerCell,j))/4.0d0
 !            end do
 !            
 !            if(j==3657) then
@@ -11152,19 +11155,19 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
 !        call Msg( 'Ss file: '//FName)
 !
-!        allocate(Modflow.Ss(Modflow.gwf.nCell))
+!        allocate(Modflow.Ss(Modflow.gwf.nCells))
 !
 !	    if(status /= 0) then
 !		    call ErrMsg('FILE ERROR: '//fname)
 !		    stop
 !        endif
-!	    read(itmp,*) (Modflow.ss(j),j=1,Modflow.gwf.nCell)
+!	    read(itmp,*) (Modflow.ss(j),j=1,Modflow.gwf.nCells)
 !	    call freeunit(FNum)
 !
 !        continue
@@ -11178,19 +11181,19 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
 !        call Msg( 'Sy file: '//FName)
 !
-!        allocate(Modflow.Sy(Modflow.gwf.nCell))
+!        allocate(Modflow.Sy(Modflow.gwf.nCells))
 !
 !	    if(status /= 0) then
 !		    call ErrMsg('FILE ERROR: '//fname)
 !		    stop
 !        endif
-!	    read(itmp,*) (Modflow.Sy(j),j=1,Modflow.gwf.nCell)
+!	    read(itmp,*) (Modflow.Sy(j),j=1,Modflow.gwf.nCells)
 !	    call freeunit(FNum)
 !
 !        continue
@@ -11204,19 +11207,19 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
 !        call Msg( 'Vanis file: '//FName)
 !
-!        allocate(Modflow.Vanis(Modflow.gwf.nCell))
+!        allocate(Modflow.Vanis(Modflow.gwf.nCells))
 !
 !	    if(status /= 0) then
 !		    call ErrMsg('FILE ERROR: '//fname)
 !		    stop
 !        endif
-!	    read(itmp,*) (Modflow.Vanis(j),j=1,Modflow.gwf.nCell)
+!	    read(itmp,*) (Modflow.Vanis(j),j=1,Modflow.gwf.nCells)
 !	    call freeunit(FNum)
 !
 !        continue
@@ -11232,7 +11235,7 @@ module MUSG !
 !        character(MAXSTRING) :: Line
 !        real(dr) :: r1
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
@@ -11276,7 +11279,7 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        integer :: LastStressPeriod
 !        character(MAXSTRING) :: VarBuffer
@@ -11352,7 +11355,7 @@ module MUSG !
 !        character(MAXSTRING) :: Line
 !        real(dr) :: r1
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
@@ -11397,7 +11400,7 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        character(MAXSTRING) :: VarBuffer
 !        character(MAXSTRING) :: OutputBuffer
@@ -11498,7 +11501,7 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !        character(MAXSTRING) :: line
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
@@ -11554,7 +11557,7 @@ module MUSG !
 !        integer :: Fnum
 !        character(MAXLBL) :: FName
 !        character(MAXSTRING) :: line
-!        type (MUSG_Project) Modflow
+!        type (ModflowProject) Modflow
 !
 !        read(FnumTG,'(a)') FName
 !        call OpenAscii(FNum,FName)
@@ -12585,7 +12588,7 @@ module MUSG !
     !    USE IFPORT 
     !    implicit none 
     !
-    !    type (MUSG_Project) Modflow
+    !    type (ModflowProject) Modflow
     !
     !
     !    integer :: i,j, k
@@ -12606,32 +12609,32 @@ module MUSG !
     !    do i=1, Modflow.nWellConst
     !        if(index(Modflow.NameWellConst(i),trim(WellID)) > 0) then
     !            
-    !            do j=1,Modflow.gwf.nCell/Modflow.gwf.nLay  ! loop over the cells in layer 1
-    !                if(Modflow.XWellConst(i) >= Modflow.gwf.X(Modflow.gwf.ivertex(1,j)) .and. Modflow.XWellConst(i) <= Modflow.gwf.X(Modflow.gwf.ivertex(4,j))) then
+    !            do j=1,Modflow.gwf.nCells/Modflow.gwf.nLayers  ! loop over the cells in layer 1
+    !                if(Modflow.XWellConst(i) >= Modflow.gwf.X(Modflow.gwf.iNode(1,j)) .and. Modflow.XWellConst(i) <= Modflow.gwf.X(Modflow.gwf.iNode(4,j))) then
     !                
-    !                    if(Modflow.YWellConst(i) >= Modflow.gwf.Y(Modflow.gwf.ivertex(1,j)) .and. Modflow.YWellConst(i) <= Modflow.gwf.Y(Modflow.gwf.ivertex(2,j))) then
+    !                    if(Modflow.YWellConst(i) >= Modflow.gwf.Y(Modflow.gwf.iNode(1,j)) .and. Modflow.YWellConst(i) <= Modflow.gwf.Y(Modflow.gwf.iNode(2,j))) then
     !                        iCellCurr=j
     !                        write(*,'(a,i8,3f15.3)') ' Cell x y z',iCellCurr, Modflow.gwf.xCell(iCellCurr), Modflow.gwf.yCell(iCellCurr), Modflow.gwf.zCell(iCellCurr)
     !                        write(*,*) ' k, vertex(k), Xvertex(k), Yvertex(k), Zvertex(k)'
-    !                        do k=1,Modflow.gwf.m  
-    !                            write(*,'(i2,i8,3f15.3)') k, Modflow.gwf.ivertex(k,iCellCurr),Modflow.gwf.X(Modflow.gwf.ivertex(k,iCellCurr)),Modflow.gwf.Y(Modflow.gwf.ivertex(k,iCellCurr)),Modflow.gwf.Z(Modflow.gwf.ivertex(k,iCellCurr))
+    !                        do k=1,Modflow.gwf.nNodesPerCell  
+    !                            write(*,'(i2,i8,3f15.3)') k, Modflow.gwf.iNode(k,iCellCurr),Modflow.gwf.X(Modflow.gwf.iNode(k,iCellCurr)),Modflow.gwf.Y(Modflow.gwf.iNode(k,iCellCurr)),Modflow.gwf.Z(Modflow.gwf.iNode(k,iCellCurr))
     !                        end do
     !                        pause
     !                        CurrTopElev=Modflow.TopElevWellConst(i)
-    !                        LayerLoop: do k=1,Modflow.gwf.nLay 
-    !                            if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
-    !                                if(Modflow.BotElevWellConst(i) > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                        LayerLoop: do k=1,Modflow.gwf.nLayers 
+    !                            if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                                if(Modflow.BotElevWellConst(i) > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !                                    CellHeight=CurrTopElev-Modflow.BotElevWellConst(i)
     !                                    write(*,*) iCellCurr, CellHeight
     !                                    exit LayerLoop
     !                                else
-    !                                    CellHeight=CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                                    CellHeight=CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                                    write(*,*) iCellCurr, CellHeight
-    !                                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                                    iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                                    iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                                endif
     !                            else
-    !                                iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                                
     !                            end if
     !                        end do LayerLoop
@@ -12650,7 +12653,7 @@ module MUSG !
     !    USE IFPORT 
     !    implicit none 
     !
-    !    type (MUSG_Project) Modflow
+    !    type (ModflowProject) Modflow
     !
     !
     !    integer :: i,j, k
@@ -12755,34 +12758,34 @@ module MUSG !
     !        
     !        WellFound=.false.
     !             
-    !        do j=1,Modflow.gwf.nCell/Modflow.gwf.nLay  ! loop over the cells in layer 1
-    !            if(Modflow.X_EIWell(i) >= Modflow.gwf.X(Modflow.gwf.ivertex(1,j)) .and. Modflow.X_EIWell(i) <= Modflow.gwf.X(Modflow.gwf.ivertex(4,j))) then
-    !                if(Modflow.Y_EIWell(i) >= Modflow.gwf.Y(Modflow.gwf.ivertex(1,j)) .and. Modflow.Y_EIWell(i) <= Modflow.gwf.Y(Modflow.gwf.ivertex(2,j))) then
+    !        do j=1,Modflow.gwf.nCells/Modflow.gwf.nLayers  ! loop over the cells in layer 1
+    !            if(Modflow.X_EIWell(i) >= Modflow.gwf.X(Modflow.gwf.iNode(1,j)) .and. Modflow.X_EIWell(i) <= Modflow.gwf.X(Modflow.gwf.iNode(4,j))) then
+    !                if(Modflow.Y_EIWell(i) >= Modflow.gwf.Y(Modflow.gwf.iNode(1,j)) .and. Modflow.Y_EIWell(i) <= Modflow.gwf.Y(Modflow.gwf.iNode(2,j))) then
     !                    iCellCurr=j
     !                    WellFound=.true.
     !
     !                    write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', Modflow.gwf.xCell(iCellCurr), Modflow.gwf.yCell(iCellCurr)
     !                    call Msg(TmpSTR)
     !
-    !                    write(TmpSTR,'(a,2f15.3)') 'X range ', Modflow.gwf.X(Modflow.gwf.ivertex(1,j)), Modflow.gwf.X(Modflow.gwf.ivertex(4,j))
+    !                    write(TmpSTR,'(a,2f15.3)') 'X range ', Modflow.gwf.X(Modflow.gwf.iNode(1,j)), Modflow.gwf.X(Modflow.gwf.iNode(4,j))
     !                    call Msg(TmpSTR)
-    !                    write(TmpSTR,'(a,2f15.3)') 'Y range ', Modflow.gwf.Y(Modflow.gwf.ivertex(1,j)), Modflow.gwf.Y(Modflow.gwf.ivertex(2,j))
+    !                    write(TmpSTR,'(a,2f15.3)') 'Y range ', Modflow.gwf.Y(Modflow.gwf.iNode(1,j)), Modflow.gwf.Y(Modflow.gwf.iNode(2,j))
     !                    call Msg(TmpSTR)
     !
     !                    
     !                    
     !                    call Msg(' Layer  Cell     Vertex         Z      Height')
-    !                    write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,Modflow.gwf.Z(Modflow.gwf.ivertex(4,iCellCurr))
+    !                    write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,Modflow.gwf.Z(Modflow.gwf.iNode(4,iCellCurr))
     !                    call Msg(TmpSTR)
-    !                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(4,iCellCurr))
-    !                    do k=1,Modflow.gwf.nLay                             
-    !                        write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)),CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(4,iCellCurr))
+    !                    do k=1,Modflow.gwf.nLayers                             
+    !                        write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)),CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                        call Msg(TmpSTR)
-    !                        if(k==Modflow.gwf.nLay) then
-    !                            MeshBottom= Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                        if(k==Modflow.gwf.nLayers) then
+    !                            MeshBottom= Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                        endif
-    !                        CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                        iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                        CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                        iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                    end do
     !                    
     !                    iCellCurr=j
@@ -12793,8 +12796,8 @@ module MUSG !
     !                    CurrBotElev=CurrTopElev-Modflow.ScreenALength_EIWell(i)
     !                    CurrScreenLength=0.0d0
     !                    ScreenFound=.false.
-    !                    LayerLoop1: do k=1,Modflow.gwf.nLay 
-    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                    LayerLoop1: do k=1,Modflow.gwf.nLayers 
+    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)))  then  ! if current screen top > current cell bottom
     !                            if(.not. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                                ScreenFound=.true.
@@ -12802,7 +12805,7 @@ module MUSG !
     !                                nCellList(nEIScreens)=0
     !                                NameEIScreen(nEIScreens)=trim(Modflow.Name_EIWell(i))//'_A'
     !                            end if
-    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
     !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-CurrBotElev
@@ -12814,17 +12817,17 @@ module MUSG !
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                                write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                call Msg(TmpSTR)
     !                                CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                
-    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                                iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                                iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                            endif
     !                        else
-    !                            iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
-    !                            if(iCellCurr > Modflow.gwf.nCell .and. ScreenFound) then
+    !                            iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
+    !                            if(iCellCurr > Modflow.gwf.nCells .and. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                            endif
     !                                
@@ -12852,8 +12855,8 @@ module MUSG !
     !                    CurrScreenLength=0.0d0
     !                    ScreenFound=.false.
     !                    iCellCurr=j
-    !                    LayerLoop2: do k=1,Modflow.gwf.nLay 
-    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                    LayerLoop2: do k=1,Modflow.gwf.nLayers 
+    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)))  then  ! if current screen top > current cell bottom
     !                            if(.not. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                                ScreenFound=.true.
@@ -12861,7 +12864,7 @@ module MUSG !
     !                                nCellList(nEIScreens)=0
     !                                NameEIScreen(nEIScreens)=trim(Modflow.Name_EIWell(i))//'_B'
     !                            endif
-    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
@@ -12874,16 +12877,16 @@ module MUSG !
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                                write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                call Msg(TmpSTR)
     !                                CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
-    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                                iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                                iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                            endif
     !                        else
-    !                            iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
-    !                            if(iCellCurr > Modflow.gwf.nCell .and. ScreenFound) then
+    !                            iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
+    !                            if(iCellCurr > Modflow.gwf.nCells .and. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                            endif
     !                                
@@ -13098,7 +13101,7 @@ module MUSG !
     !    USE IFPORT 
     !    implicit none 
     !
-    !    type (MUSG_Project) Modflow
+    !    type (ModflowProject) Modflow
     !
     !
     !    integer :: i,j, k
@@ -13194,34 +13197,34 @@ module MUSG !
     !        
     !        WellFound=.false.
     !             
-    !        do j=1,Modflow.gwf.nCell/Modflow.gwf.nLay  ! loop over the cells in layer 1
-    !            if(Modflow.X_EIWell(i) >= Modflow.gwf.X(Modflow.gwf.ivertex(1,j)) .and. Modflow.X_EIWell(i) <= Modflow.gwf.X(Modflow.gwf.ivertex(4,j))) then
-    !                if(Modflow.Y_EIWell(i) >= Modflow.gwf.Y(Modflow.gwf.ivertex(1,j)) .and. Modflow.Y_EIWell(i) <= Modflow.gwf.Y(Modflow.gwf.ivertex(2,j))) then
+    !        do j=1,Modflow.gwf.nCells/Modflow.gwf.nLayers  ! loop over the cells in layer 1
+    !            if(Modflow.X_EIWell(i) >= Modflow.gwf.X(Modflow.gwf.iNode(1,j)) .and. Modflow.X_EIWell(i) <= Modflow.gwf.X(Modflow.gwf.iNode(4,j))) then
+    !                if(Modflow.Y_EIWell(i) >= Modflow.gwf.Y(Modflow.gwf.iNode(1,j)) .and. Modflow.Y_EIWell(i) <= Modflow.gwf.Y(Modflow.gwf.iNode(2,j))) then
     !                    iCellCurr=j
     !                    WellFound=.true.
     !
     !                    write(TmpSTR,'(a,i8,a,2f15.3)') 'Found in cell ', iCellCurr,' at cell centroid X Y ', Modflow.gwf.xCell(iCellCurr), Modflow.gwf.yCell(iCellCurr)
     !                    call Msg(TmpSTR)
     !
-    !                    write(TmpSTR,'(a,2f15.3)') 'X range ', Modflow.gwf.X(Modflow.gwf.ivertex(1,j)), Modflow.gwf.X(Modflow.gwf.ivertex(4,j))
+    !                    write(TmpSTR,'(a,2f15.3)') 'X range ', Modflow.gwf.X(Modflow.gwf.iNode(1,j)), Modflow.gwf.X(Modflow.gwf.iNode(4,j))
     !                    call Msg(TmpSTR)
-    !                    write(TmpSTR,'(a,2f15.3)') 'Y range ', Modflow.gwf.Y(Modflow.gwf.ivertex(1,j)), Modflow.gwf.Y(Modflow.gwf.ivertex(2,j))
+    !                    write(TmpSTR,'(a,2f15.3)') 'Y range ', Modflow.gwf.Y(Modflow.gwf.iNode(1,j)), Modflow.gwf.Y(Modflow.gwf.iNode(2,j))
     !                    call Msg(TmpSTR)
     !
     !                    
     !                    
     !                    call Msg(' Layer  Cell     Vertex         Z      Height')
-    !                    write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,Modflow.gwf.Z(Modflow.gwf.ivertex(4,iCellCurr))
+    !                    write(TmpSTR,'(i5,i8,i8,f15.3)') 0, iCellCurr, 4,Modflow.gwf.Z(Modflow.gwf.iNode(4,iCellCurr))
     !                    call Msg(TmpSTR)
-    !                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(4,iCellCurr))
-    !                    do k=1,Modflow.gwf.nLay                             
-    !                        write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)),CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                    CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(4,iCellCurr))
+    !                    do k=1,Modflow.gwf.nLayers                             
+    !                        write(TmpSTR,'(i5,i8,i8,5f15.3)') k, iCellCurr,8, Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)),CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                        call Msg(TmpSTR)
-    !                        if(k==Modflow.gwf.nLay) then
-    !                            MeshBottom= Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                        if(k==Modflow.gwf.nLayers) then
+    !                            MeshBottom= Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                        endif
-    !                        CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                        iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                        CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                        iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                    end do
     !                    
     !                    iCellCurr=j
@@ -13232,8 +13235,8 @@ module MUSG !
     !                    CurrBotElev=CurrTopElev-Modflow.ScreenALength_EIWell(i)
     !                    CurrScreenLength=0.0d0
     !                    ScreenFound=.false.
-    !                    LayerLoop1: do k=1,Modflow.gwf.nLay 
-    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                    LayerLoop1: do k=1,Modflow.gwf.nLayers 
+    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)))  then  ! if current screen top > current cell bottom
     !                            if(.not. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                                ScreenFound=.true.
@@ -13241,7 +13244,7 @@ module MUSG !
     !                                nCellList(nEIScreens)=0
     !                                NameEIScreen(nEIScreens)=trim(Modflow.Name_EIWell(i))//'_A'
     !                            end if
-    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
     !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-CurrBotElev
@@ -13253,17 +13256,17 @@ module MUSG !
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                                write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                call Msg(TmpSTR)
     !                                CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                
-    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                                iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                                iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                            endif
     !                        else
-    !                            iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
-    !                            if(iCellCurr > Modflow.gwf.nCell .and. ScreenFound) then
+    !                            iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
+    !                            if(iCellCurr > Modflow.gwf.nCells .and. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                            endif
     !                                
@@ -13291,8 +13294,8 @@ module MUSG !
     !                    CurrScreenLength=0.0d0
     !                    ScreenFound=.false.
     !                    iCellCurr=j
-    !                    LayerLoop2: do k=1,Modflow.gwf.nLay 
-    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr)))  then  ! if current screen top > current cell bottom
+    !                    LayerLoop2: do k=1,Modflow.gwf.nLayers 
+    !                        if(CurrTopElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr)))  then  ! if current screen top > current cell bottom
     !                            if(.not. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                                ScreenFound=.true.
@@ -13300,7 +13303,7 @@ module MUSG !
     !                                nCellList(nEIScreens)=0
     !                                NameEIScreen(nEIScreens)=trim(Modflow.Name_EIWell(i))//'_B'
     !                            endif
-    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))) then ! if current screen bot > current cell bottom
+    !                            if(CurrBotElev > Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))) then ! if current screen bot > current cell bottom
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
@@ -13313,16 +13316,16 @@ module MUSG !
     !
     !                                nCellList(nEIScreens)=nCellList(nEIScreens)+1  
     !                                CellNumber(nEIScreens,nCellList(nEIScreens))= iCellCurr
-    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
+    !                                CellScreenLength(nEIScreens,nCellList(nEIScreens)) = CurrTopElev-Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
     !                                write(TmpSTR,'(i5,i8,f15.3)') nEIScreens,CellNumber(nEIScreens,nCellList(nEIScreens)), CellScreenLength(nEIScreens,nCellList(nEIScreens))
     !                                call Msg(TmpSTR)
     !                                CurrScreenLength=CurrScreenLength+CellScreenLength(nEIScreens,nCellList(nEIScreens))
-    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.ivertex(8,iCellCurr))
-    !                                iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
+    !                                CurrTopElev=Modflow.gwf.Z(Modflow.gwf.iNode(8,iCellCurr))
+    !                                iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
     !                            endif
     !                        else
-    !                            iCellCurr=iCellCurr+Modflow.gwf.nCell/Modflow.gwf.nLay
-    !                            if(iCellCurr > Modflow.gwf.nCell .and. ScreenFound) then
+    !                            iCellCurr=iCellCurr+Modflow.gwf.nCells/Modflow.gwf.nLayers
+    !                            if(iCellCurr > Modflow.gwf.nCells .and. ScreenFound) then
     !                                nEIScreens=nEIScreens+1
     !                            endif
     !                                
@@ -13787,7 +13790,7 @@ module MUSG !
     !    !USE IFPORT 
     !    implicit none 
     !
-    !    !type (MUSG_Project) Modflow
+    !    !type (ModflowProject) Modflow
     !
     !
     !    integer :: i, j
