@@ -5,7 +5,7 @@
 		<Platform Name="x64"/></Platforms>
 	<Configurations>
 		<Configuration Name="Debug|Win32">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" AdditionalIncludeDirectories="C:\Program Files\Tecplot\Tecplot 360 EX 2018 R2\include" WarnDeclarations="true" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug" WarnUndeclaredExternals="true"/>
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" AdditionalIncludeDirectories="C:\Program Files\Tecplot\Tecplot 360 EX 2018 R2\include" WarnDeclarations="true" WarnUndeclaredExternals="true" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
 				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="C:\Program Files\Tecplot\Tecplot 360 EX 2018 R2\lib" GenerateDebugInformation="true" SubSystem="subSystemConsole" AdditionalDependencies="tecio.lib"/>
 				<Tool Name="VFResourceCompilerTool"/>
 				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
@@ -15,8 +15,8 @@
 				<Tool Name="VFPostBuildEventTool" CommandLine="copy D:\GIT-MF-usg_TOOLS\mut\Debug\mut.exe D:\Program_Files\bin"/>
 				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
 		<Configuration Name="Debug|x64">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" HeapArrays="0" AdditionalIncludeDirectories="C:\Program Files\Tecplot\Tecplot 360 EX 2018 R2\include" WarnDeclarations="true" WarnUnusedVariables="true" WarnTruncateSource="true" WarnUncalled="true" WarnInterfaces="true" Traceback="true" BoundsCheck="true" UninitializedVariablesCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug" WarnUndeclaredExternals="true"/>
-				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="C:\Program Files\Tecplot\Tecplot 360 EX 2018 R2\lib" GenerateDebugInformation="true" SubSystem="subSystemConsole" AdditionalDependencies="tecio.lib"/>
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" HeapArrays="0" AdditionalIncludeDirectories="$(TEC360INCLUDE)" WarnDeclarations="true" WarnUndeclaredExternals="true" WarnUnusedVariables="true" WarnTruncateSource="true" WarnUncalled="true" WarnInterfaces="true" Traceback="true" BoundsCheck="true" UninitializedVariablesCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
+				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="$(TEC360LIB)" GenerateDebugInformation="true" SubSystem="subSystemConsole" AdditionalDependencies="tecio.lib"/>
 				<Tool Name="VFResourceCompilerTool"/>
 				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
 				<Tool Name="VFCustomBuildTool"/>

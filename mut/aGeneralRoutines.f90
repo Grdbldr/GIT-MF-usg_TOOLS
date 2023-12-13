@@ -4061,6 +4061,7 @@ module GeneralRoutines    !### bit setting routines
     character(512) :: TmpSTR
 
     character(1) :: str1
+    character(2) :: str2
     integer :: l1, l2
 
     !------------------------------------------------------------------------ Raster declarations
@@ -4107,7 +4108,7 @@ module GeneralRoutines    !### bit setting routines
 
     !------------------------------------------------------------------------ General declarations
     integer :: ncount
-    character(5) :: MUTVersion=' 1.03'
+    character(5) :: MUTVersion=' 1.04'
 
     !------------------------------------------------------------------------ HGS domain coupling scheme types
 	integer :: multi = 1

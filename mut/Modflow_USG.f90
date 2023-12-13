@@ -76,10 +76,23 @@ module MUSG !
         real(dr), allocatable :: y(:)
         real(dr), allocatable :: z(:)
         
+        integer, allocatable :: ibound(:)
+        real, allocatable :: hnew(:)  ! initial head
+        
+        ! .HDS file
+        character(128) :: FNameHDS
+        integer :: iHDS
         real, allocatable :: Head(:,:)
+        
+        ! .DDN file
+        character(128) :: FNameDDN
+        integer :: iDDN
 	    real, allocatable :: Sat(:,:)
         
-        ! GWF.cbb components
+        ! .CBB file 
+        integer :: nComp
+        character(128) :: FNameCBB
+        integer :: iCBB
         real, allocatable :: Cbb_STORAGE(:,:)
 	    real, allocatable :: Cbb_CONSTANT_HEAD(:,:)
 	    real, allocatable :: Cbb_RECHARGE(:,:)
@@ -92,6 +105,9 @@ module MUSG !
         real, allocatable :: laycbd(:)
         real, allocatable :: bot(:)
         real, allocatable :: top(:)
+        
+        ! Properties
+        real, allocatable :: hk(:)
 
         
         logical :: have_mesh=.false.
@@ -223,28 +239,7 @@ module MUSG !
         
         ! DATA(BINARY) files
         ! HDS file
-        character(128) :: FNameHDS_GWF
-        integer :: iHDS_GWF
-        character(128) :: FNameHDS_CLN
-        integer :: iHDS_CLN
-        character(128) :: FNameHDS_SWF
-        integer :: iHDS_SWF
         
-        ! DDN file
-        character(128) :: FNameDDN_GWF
-        integer :: iDDN_GWF
-        character(128) :: FNameDDN_CLN
-        integer :: iDDN_CLN
-        character(128) :: FNameDDN_SWF
-        integer :: iDDN_SWF
-        
-        ! CBB file
-        character(128) :: FNameCBB_GWF
-        integer :: iCBB_GWF
-        character(128) :: FNameCBB_CLN
-        integer :: iCBB_CLN
-        character(128) :: FNameCBB_SWF
-        integer :: iCBB_SWF
 
         ! CBCCLN file
         character(128) :: FNameCBCCLN
@@ -785,6 +780,10 @@ module MUSG !
         !C10------Read rest of groundwater BAS Package file (IBOUND and initial heads)
         call Msg(' ')
         call Msg('-------Read IBOUND and initial heads from BAS6:')
+        
+        ALLOCATE (modflow.gwf.IBOUND(modflow.gwf.ncells))
+        ALLOCATE (modflow.gwf.HNEW(Modflow.gwf.nCells))
+
         IF(IUNSTR.EQ.0)THEN
         !C10A-------FOR STRUCTURED GRIDS
             !CALL SGWF2BAS8SR
@@ -815,6 +814,8 @@ module MUSG !
             !C------Read rest of CLN Package file (IBOUND and initial heads)
             call Msg(' ')
             call Msg('-------Read IBOUND and initial heads from CLN:')
+            ALLOCATE (modflow.cln.IBOUND(modflow.cln.ncells))
+            ALLOCATE (modflow.cln.HNEW(Modflow.cln.nCells))
             CALL MUSG_ReadCLN_IBOUND_IHEADS(Modflow)  ! based on subroutine CLN2BAS1AR
         end if
         
@@ -823,6 +824,8 @@ module MUSG !
             !C------Read rest of SWF Package file (IBOUND and initial heads)
             call Msg(' ')
             call Msg('-------Read IBOUND and initial heads from SWF:')
+            ALLOCATE (modflow.swf.IBOUND(modflow.swf.ncells))
+            ALLOCATE (modflow.swf.HNEW(Modflow.swf.nCells))
             CALL MUSG_ReadSWF_IBOUND_IHEADS(Modflow)  ! based on subroutine SWF2BAS1AR
         end if
         
@@ -856,29 +859,37 @@ module MUSG !
         call MUSG_CreateStepPeriodTimeFile(Modflow)
 
         
-        call MUSG_ReadBinary_GWF_HDS_File(Modflow)
-        call MUSG_ReadBinary_GWF_DDN_File(Modflow)
-        call MUSG_ReadBinary_GWF_CBB_File(Modflow)
+        call MUSG_ReadBinary_HDS_File(Modflow,Modflow.gwf)
+        call MUSG_ReadBinary_DDN_File(Modflow,Modflow.gwf)
+        call MUSG_ReadBinary_CBB_File(Modflow, Modflow.gwf)
         if(Modflow.gwf.have_mesh) then
             call Msg(' ')
 		    call Msg('Generating mesh-based Tecplot output files for GWF:')
-            call MUSG_GWF_HDS_DDN_ToTecplot(Modflow)
-            call MUSG_GWF_IBOUND_ToTecplot(Modflow)
+            !call MUSG_HDS_DDN_ToTecplot(Modflow,Modflow.gwf)
+            !call MUSG_GWF_IBOUND_ToTecplot(Modflow)
             !call MUSG_GWF_CBB_ToTecplot(Modflow)
-            call MUSG_CBB_ToTecplot(Modflow,Modflow.gwf)
+            !call MUSG_CBB_ToTecplot(Modflow,Modflow.gwf)
+            
+            
+            call MUSG_ToTecplot(Modflow,Modflow.gwf)
+
+            
         else
 		   call Msg('Generating cell-based Tecplot output files for GWF:')
            call MUSG_GWF_IBOUNDv2_ToTecplot(Modflow)
         endif
         
         IF(Modflow.iCLN/=0) THEN
-            call MUSG_ReadBinary_CLN_HDS_File(Modflow)
-            call MUSG_ReadBinary_CLN_DDN_File(Modflow)
-            call MUSG_ReadBinary_CLN_CBB_File(Modflow)
+            call MUSG_ReadBinary_HDS_File(Modflow,Modflow.cln)
+            call MUSG_ReadBinary_DDN_File(Modflow,Modflow.cln)
+            call MUSG_ReadBinary_CBB_File(Modflow, Modflow.cln)
             if(Modflow.cln.have_mesh) then
     		    call Msg('Generating mesh-based Tecplot output files for CLN:')
-                call MUSG_CLN_HDS_DDN_ToTecplot(Modflow)
-                call MUSG_CBB_ToTecplot(Modflow,Modflow.cln)
+                !call MUSG_CLN_HDS_DDN_ToTecplot(Modflow)
+                !call MUSG_CBB_ToTecplot(Modflow,Modflow.cln)
+    
+                call MUSG_ToTecplot(Modflow,Modflow.cln)
+                
             else
 		       call Msg('No cell-based Tecplot output files for CLN:')
                !call MUSG_CLN_IBOUNDv2_ToTecplot(Modflow)
@@ -887,19 +898,23 @@ module MUSG !
         end if
         
         IF(Modflow.iSWF/=0) THEN
-            call MUSG_ReadBinary_SWF_HDS_File(Modflow)
-            call MUSG_ReadBinary_SWF_DDN_File(Modflow)
-            call MUSG_ReadBinary_SWF_CBB_File(Modflow)
+            call MUSG_ReadBinary_HDS_File(Modflow,Modflow.swf)
+            call MUSG_ReadBinary_DDN_File(Modflow,Modflow.swf)
+            call MUSG_ReadBinary_CBB_File(Modflow, Modflow.swf)
             if(Modflow.swf.have_mesh) then
     		    call Msg('Generating mesh-based Tecplot output files for SWF:')
-                call MUSG_SWF_HDS_DDN_ToTecplot(Modflow)
-                call MUSG_CBB_ToTecplot(Modflow,Modflow.swf)
+                !call MUSG_SWF_HDS_DDN_ToTecplot(Modflow)
+                !call MUSG_CBB_ToTecplot(Modflow,Modflow.swf)
+
+                call MUSG_ToTecplot(Modflow,Modflow.swf)
+                
             else
 		       call Msg('No cell-based Tecplot output files for SWF:')
                !call MUSG_CLN_IBOUNDv2_ToTecplot(Modflow)
             endif
                     
         end if
+
 
 
         !open(Modflow.iSCAN,file=Modflow.FNameSCAN,status='unknown',form='formatted')
@@ -1134,32 +1149,32 @@ module MUSG !
       IF(FILTYP.EQ.'DATA(BINARY)') THEN
          call lcase(FNAME(1:IFLEN))
          if(index(FNAME(1:IFLEN),'cln.hds') /= 0) then
-             modflow.iHDS_CLN=IU
-             modflow.FNameHDS_CLN=FNAME(1:IFLEN)
+             modflow.cln.iHDS=IU
+             modflow.cln.FNameHDS=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'swf.hds') /= 0) then
-             modflow.iHDS_SWF=IU
-             modflow.FNameHDS_SWF=FNAME(1:IFLEN)
+             modflow.swf.iHDS=IU
+             modflow.swf.FNameHDS=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.hds') /= 0) then
-             modflow.iHDS_GWF=IU
-             modflow.FNameHDS_GWF=FNAME(1:IFLEN)
+             modflow.gwf.iHDS=IU
+             modflow.gwf.FNameHDS=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'cln.ddn') /= 0) then
-             modflow.iDDN_CLN=IU
-             modflow.FNameDDN_CLN=FNAME(1:IFLEN)
+             modflow.cln.iDDN=IU
+             modflow.cln.FNameDDN=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'swf.ddn') /= 0) then
-             modflow.iDDN_SWF=IU
-             modflow.FNameDDN_SWF=FNAME(1:IFLEN)
+             modflow.swf.iDDN=IU
+             modflow.swf.FNameDDN=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.ddn') /= 0) then
-             modflow.iDDN_GWF=IU
-             modflow.FNameDDN_GWF=FNAME(1:IFLEN)
+             modflow.gwf.iDDN=IU
+             modflow.gwf.FNameDDN=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'cln.cbb') /= 0) then
-             modflow.iCBB_CLN=IU
-             modflow.FNameCBB_CLN=FNAME(1:IFLEN)
+             modflow.cln.iCBB=IU
+             modflow.cln.FNameCBB=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'swf.cbb') /= 0) then
-             modflow.iCBB_SWF=IU
-             modflow.FNameCBB_SWF=FNAME(1:IFLEN)
+             modflow.swf.iCBB=IU
+             modflow.swf.FNameCBB=FNAME(1:IFLEN)
          else if(index(FNAME(1:IFLEN),'gwf.cbb') /= 0) then
-             modflow.iCBB_GWF=IU
-             modflow.FNameCBB_GWF=FNAME(1:IFLEN)
+             modflow.gwf.iCBB=IU
+             modflow.gwf.FNameCBB=FNAME(1:IFLEN)
          endif
       endif
      
@@ -2302,6 +2317,7 @@ module MUSG !
         !
               ALLOCATE(LAYFLG(6,NLAY))
               ALLOCATE(HK(NODES))
+              ALLOCATE(modflow.gwf.HK(NODES))
               ALLOCATE(VKA(NODES))
               IF(NCNFBD.GT.0) THEN
                  ALLOCATE(VKCB(NODES))
@@ -2405,6 +2421,7 @@ module MUSG !
                 CALL SGWF2LPFU1G(IN,NPHK,NPHANI,NPVK,NPVANI,NPSS,NPSY,NPVKCB,&
                  STOTXT,NOPCHK)
               ENDIF
+              modflow.gwf.hk=hk
         
 !        !--------------------------------------------------------------------------------
 !        !8------SET INITIAL  GRID-BLOCK SATURATED THICKNESS FRACTIONS AND TRANSMISSIVITY WHEN NEEDED
@@ -2525,6 +2542,11 @@ module MUSG !
       ENDDO
       DEALLOCATE(HTMP18)
       ENDIF
+      
+      do n=1,NCLNNDS
+        modflow.cln.ibound(n)=ibound(NODES+n)
+        modflow.cln.hnew(n)=hnew(NODES+n)
+      end do
 !!
 !!4-----SET VOLUMETRIC FRACTIONS FOR CLN-NODES IN SATURATION ARRAY
 !      DO  IFN=1,NCLNNDS
@@ -2628,6 +2650,11 @@ module MUSG !
           ENDDO
           DEALLOCATE(HTMP18)
       ENDIF
+      
+      do n=1,NSWFNDS
+        modflow.swf.ibound(n)=ibound(NODES+NCLNNDS+n)
+        modflow.swf.hnew(n)=hnew(NODES+NCLNNDS+n)
+      end do
 !!
 !!4-----SET VOLUMETRIC FRACTIONS FOR CLN-NODES IN SATURATION ARRAY
 !      DO  IFN=1,NSWFNDS
@@ -2898,155 +2925,10 @@ module MUSG !
       endif
 
       RETURN
-!      IF(DEPTH>=EPSILON) THEN
-!        THCK = 1.0D0*DEPTH
-!      ELSEIF(DEPTH<=0.0D0) THEN
-!        THCK = 0.0D0*DEPTH
-!      ELSE
-!       THCK = (-2.0D0*(DEPTH-1.0D-6)**3.0D0 +
-!     1         3.0D0*(DEPTH-1.0D-6)**2.0D0)*DEPTH
-!      ENDIF
-!      THCK=1.0D0
-!      KK = 0
-!C1------GET DIRECTION OF LINE SEGMENT
-!      IFDIR = ACLNNDS(ICLN,3)
-!      I = ACLNNDS(ICLN,1)
-!C--------------------------------------------------------
-!      IF(IFDIR.EQ.0)THEN
-!C2-------VERTICAL LINE SEGMENT
-!        TOTTHICK = ACLNNDS(ICLN,4)
-!        TTOP = BBOT + TOTTHICK
-!        CALL SAT_THIK(I,HD,TOTTHICK,BBOT,THCK,KK,TTOP)
-!      ELSEIF(IFDIR.EQ.1)THEN
-!C3-------HORIZONTAL LINE SEGMENT CONDUIT
-!        IC = ACLNNDS(ICLN,2)
-!        CALL CLNAGET(IC,AREAF)
-!        CALL CLNAW(ICLN,HD,AREAW)
-!        THCK = AREAW / AREAF
-!      ELSEIF(IFDIR.EQ.2)THEN
-!C4-------ANGLED CONDUIT
-!        FANGLE = ACLNNDS(ICLN,6)
-!        TOTTHICK = ACLNNDS(ICLN,4) * SIN(FANGLE)
-!        TTOP = BBOT + TOTTHICK
-!        BBOT = ACLNNDS(ICLN,5)
-!        I = ACLNNDS(ICLN,1)
-!        CALL SAT_THIK(I,HD,TOTTHICK,BBOT,THCK,KK,TTOP)
-!      ENDIF
-!csp      IF(THCK.LT.1.0E-7) THCK = 1.0E-7
-!C
 !C5------RETURN.
       RETURN
       END SUBROUTINE SWF_THIK
  
-!      SUBROUTINE SFILLPGF_SWF
-!!     ******************************************************************
-!!     COMPUTE AND FILL CONSTANT TERMS INTO PGF ARRAY FOR CONDUIT DOMAIN FLOW
-!!     ALSO FILL AREA IN FAHL, FILL CL1, AND CL2 FOR CLN NODES
-!!     AND SET IVC = 5 OR 6 FOR SWF-CONDUIT OR SWF-MATRIX CONNECTIONS
-!!     ******************************************************************
-!      USE GLOBAL, ONLY:IA,PGF,FAHL,CL1,CL2,&
-!                 JA,JAS,IVC,AREA
-!      USE GWFBCFMODULE,ONLY:VKA
-!      USE SWF1MODULE
-!      
-!      integer :: nc1, ii_swf, nc2, kk_swf, iis_swf, is1, is2, ii, iis
-!      real :: rou1, rou2, roughness
-!      integer :: ifn, ih, nh, nl, jj, ifnc, n
-!!
-!!--------------------------------------------------------------------------------------
-!!1-----CONNECT CLN NODES TO EACH OTHER
-!!--------------------------------------------------------------------------------------
-!!1A---------loop over all SWF nodes
-!      DO NC1 = 1,NSWFNDS
-!!2----------loop over all connections of node NC1
-!        DO II_SWF = IA_SWF(NC1)+1,IA_SWF(NC1+1)-1
-!          NC2 = JA_SWF(II_SWF)
-!          IF(NC2.GT.NC1) CYCLE
-!! IIS_SWF
-!          DO KK_SWF=IA_SWF(NC2),IA_SWF(NC2+1)-1
-!              IF(JA_SWF(KK_SWF).EQ.NC1) THEN
-!                  IIS_SWF = KK_SWF
-!              ENDIF
-!          ENDDO
-!          GEOM = FAHL_SWF(II_SWF)/(CL12_SWF(II_SWF)+CL12_SWF(IIS_SWF))
-!          IS1 = ASWFNDS(NC1,2)     !SWF TYPE FOR NODE 1
-!          IS2 = ASWFNDS(NC2,2)     !SWF TYPE FOR NODE 2
-!          II = IDXGLO_SWF(II_SWF)
-!          IIS = JAS(II)
-!!
-!          CL1(IIS)=CL12_SWF(II_SWF)
-!          CL2(IIS)=CL12_SWF(IIS_SWF)
-!          FAHL(IIS)=FAHL_SWF(IIS)
-!!
-!          ROU1=ASWFCOND(IS1,2)
-!          ROU2=ASWFCOND(IS2,2)
-!          ROUGHNESS=0.5D0*(ROU1+ROU2)
-!          PGF(IIS)=GEOM/ROUGHNESS
-!          IVC(IIS)=5
-!        ENDDO
-!      ENDDO
-!!
-!!--------------------------------------------------------------------------------------
-!!4-----CONNECT SWF NODES WITH POROUS MATRIX
-!!-------------------------------------------------------------------------------------
-!!4A-----loop over all SWF node to GW connections
-!      DO IFN = 1,NSWFGWC
-!        IH = ASWFGWC(IFN,1)
-!        NH = ASWFNDS(IH,1)
-!        NL = ASWFGWC(IFN,2)
-!        DO II = IA(NL)+1,IA(NL+1)-1
-!          JJ = JA(II)
-!          IF(JJ.NE.NH) CYCLE
-!          GEOM = ASWFGWC(IFN,4)/ASWFGWC(IFN,3)
-!          IIS = JAS(II)
-!          IVC(IIS)=6
-!!--------------------------------------------------------------------------------------
-!          PGF(IIS) = GEOM*VKA(NL)
-!!--------------------------------------------------------------------------------------
-!        ENDDO
-!      ENDDO
-!!
-!      DO IFNC=1,NSWFNDS
-!        N = ASWFNDS(IFNC,1)
-!        AREA(N) = ASWFNDS(IFNC,3)
-!      ENDDO
-!!7------RETURN
-!      RETURN
-!      END SUBROUTINE SFILLPGF_SWF
-      
-!      SUBROUTINE FILLIDXGLO_SWF
-!!     ******************************************************************
-!!      FILL POINTER ARRAY FOR SWF DOMAIN TO GLOBAL MATRIX IDXGLO_SWF
-!!     ******************************************************************
-!!
-!!        SPECIFICATIONS:
-!!     ------------------------------------------------------------------
-!      USE SWF1MODULE, ONLY: IDXGLO_SWF,NJA_SWF,NSWFNDS,ASWFNDS
-!      USE CLN1MODULE, ONLY: NCLNNDS
-!      USE GLOBAL, ONLY: IA,JA,NODES
-!      
-!      integer :: ipos, nc1, nd1, ii, nd2
-!!     ------------------------------------------------------------------
-!      ALLOCATE(IDXGLO_SWF(NJA_SWF))
-!!1--------LOOP OVER ALL CLN NODES
-!      IPOS = 1
-!      DO NC1 = 1,NSWFNDS
-!        ND1 = ASWFNDS(NC1,1)
-!!2-------LOOP OVER ALL CONNECTIONS OF NODE NC1 IN GLOBAL ARRAY
-!        DO II = IA(ND1),IA(ND1+1)-1
-!          ND2 = JA(II)
-!          IF(ND2.GT.(NODES+NCLNNDS).AND.&
-!            ND2.LE.(NODES+NCLNNDS+NSWFNDS))THEN
-!            IDXGLO_SWF(IPOS) = II
-!            IPOS = IPOS + 1
-!          ENDIF
-!        ENDDO
-!      ENDDO
-!!----------------------------------------------------------------------------------------
-!!3------RETURN
-!      RETURN
-!      END SUBROUTINE FILLIDXGLO_SWF
-      
       SUBROUTINE UPARLSTRP(LSTSUM,MXLST,IN,IOUT,NP,PACK,PTYPX,ITERP,&
                           NUMINST)
 !     ******************************************************************
@@ -5855,63 +5737,7 @@ module MUSG !
       END SUBROUTINE UPARLSTAL
 
         
-!   subroutine MUSG_ReadBinary_GWF_HDS_File(Modflow)
-!    ! borrowed from J. Doherty.
-!        implicit none
-!        
-!        integer :: FNum
-!
-!        integer :: kstp,kper
-!        real     :: pertim
-!        real   :: locTIMOT(100)
-!        integer :: i
-!        character*16   :: text
-!        integer  :: ilay        
-!        real     :: rtemp  
-!        integer  :: nstrt,nend,nstrt_kp,nument
-!        integer :: inode, ii
-!
-!        
-!        type (ModflowProject) Modflow
-!
-!        !if(.not. Modflow.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
-!        
-!        allocate(Modflow.gwf.head(Modflow.gwf.nCells,Modflow.ntime))
-!
-!        FNum=Modflow.iHDS_GWF
-!        do i=1,Modflow.ntime
-!          read(FNum,err=9300,end=1000) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
-!          write(*,*) kstp,kper,pertim,locTIMOT(i),text,nstrt,nend,ilay
-!          
-!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-!          if(index(text,'cln').ne.0)then
-!            nstrt_kp=nstrt
-!            nstrt=nend
-!            nend=nstrt_kp
-!            nument=nend-nstrt+1
-!            if(nument.le.0)then
-!              call msg('nument.le.0')
-!              continue
-!            end if
-!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-!          else
-!              read(FNum,end=9400) (Modflow.gwf.head(inode,i),inode=nstrt,nend)
-!              !write(*,*) totim,nstrt,Modflow.gwf.head(nstrt,i)
-!          end if
-!          !if(ilay==Modflow.gwf.nLayers)then
-!          !    ntime=ntime+1 
-!          !endif
-!
-!        end do
-!
-!9300    continue
-!9400    continue
-!1000    continue
-!        
-!            continue        
-!        
-!    end subroutine MUSG_ReadBinary_GWF_HDS_File
-    subroutine MUSG_ReadBinary_GWF_HDS_File(Modflow)
+    subroutine MUSG_ReadBinary_HDS_File(Modflow, domain)
         implicit none
         
         integer :: i
@@ -5923,75 +5749,40 @@ module MUSG !
         integer :: k, nndlay, nstrt, ndslay, ilay
         
         type (ModflowProject) Modflow
+        type(ModflowDomain) domain
 
-        allocate(Modflow.gwf.head(Modflow.gwf.nCells,Modflow.ntime))
+        allocate(domain.head(domain.nCells,Modflow.ntime))
         
         call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading GWF head data from unit ',Modflow.iHDS_GWF,' file '//Modflow.FNameHDS_GWF(:len_trim(Modflow.FNameHDS_GWF))
+        write(TmpSTR,'(a,i5,a)')'Reading '//domain.name//' head data from unit ',domain.iHDS,' file '//domain.FNameHDS(:len_trim(domain.FNameHDS))
         call msg(TmpSTR)
-        call msg('    Period      Step     Layer      Time Cell1Head            Name')
+        if(domain.name=='GWF') then
+            call msg('    Period      Step     Layer      Time Cell1Head            Name')
+            do i=1,Modflow.ntime
+                DO K=1,NLAY
+                    NNDLAY = NODLAY(K)
+                    NSTRT = NODLAY(K-1)+1
+                    NDSLAY = NNDLAY - NODLAY(K-1)          
+                    CALL ULASAVURD(domain.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                        TOTIMREAD,NSTRT,NNDLAY,ILAY,domain.iHDS,NODES)
+                    WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,domain.head(1,i),TEXT
+                    call msg(TmpSTR)
+                END DO
+            end do
+        else
+            call msg('    Period      Step      Time Cell1Head            Name')
+            do i=1,Modflow.ntime
+                IDUM = 1
+                CALL ULASAVRD(domain.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                    TOTIMREAD,domain.ncells,IDUM,IDUM,domain.iHDS)
+                WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,domain.head(1,i),TEXT
+                call msg(TmpSTR)
+            end do
+        endif
 
-        do i=1,Modflow.ntime
-            IDUM = 1
-            DO K=1,NLAY
-              NNDLAY = NODLAY(K)
-              NSTRT = NODLAY(K-1)+1
-              NDSLAY = NNDLAY - NODLAY(K-1)          
-              CALL ULASAVURD(Modflow.gwf.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                  TOTIMREAD,NSTRT,NNDLAY,ILAY,Modflow.iHDS_GWF,NODES)
-              WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,Modflow.gwf.head(1,i),TEXT
-              call msg(TmpSTR)
-            END DO
-        end do
-
-    end subroutine MUSG_ReadBinary_GWF_HDS_File
+    end subroutine MUSG_ReadBinary_HDS_File
     
-!    subroutine MUSG_ReadBinary_GWF_DDN_File(Modflow)
-!    ! borrowed from J. Doherty.
-!        implicit none
-!
-!        integer :: Fnum
-!
-!        integer  :: kstp,kper
-!        real     :: pertim
-!        real     :: totim
-!        integer :: i
-!        character*16   :: text
-!        integer  :: ilay        
-!        real     :: rtemp  
-!        integer  :: nstrt,nend,nstrt_kp,nument
-!        integer :: inode, ii
-!
-!        
-!        type (ModflowProject) Modflow
-!
-!        allocate(Modflow.gwf.sat(Modflow.gwf.nCells,Modflow.ntime))
-!        
-!        FNum=Modflow.iDDN
-!        do i=1,Modflow.ntime
-!          read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
-!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-!          if(index(text,'cln').ne.0)then
-!            nstrt_kp=nstrt
-!            nstrt=nend
-!            nend=nstrt_kp
-!            nument=nend-nstrt+1
-!            if(nument.le.0)then
-!              call msg('nument.le.0')
-!              continue
-!            end if
-!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-!          else
-!              read(FNum,err=9400,end=9400) (Modflow.gwf.sat(inode,i),inode=nstrt,nend)
-!              !write(*,*) totim,nstrt,Modflow.gwf.sat(nstrt,Modflow.i)
-!          end if
-!
-!        end do
-!9300    continue
-!9400    continue
-!1000    continue
-!    end subroutine MUSG_ReadBinary_GWF_DDN_File
-    subroutine MUSG_ReadBinary_GWF_DDN_File(Modflow)
+    subroutine MUSG_ReadBinary_DDN_File(Modflow, domain)
         implicit none
         
         integer :: i
@@ -6003,32 +5794,40 @@ module MUSG !
         integer :: k, nndlay, nstrt, ndslay, ilay
         
         type (ModflowProject) Modflow
+        type(ModflowDomain) domain
 
-        allocate(Modflow.gwf.sat(Modflow.gwf.nCells,Modflow.ntime))
+        allocate(domain.sat(domain.nCells,Modflow.ntime))
         
         call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading GWF saturation(DDN) data from unit ',Modflow.iDDN_GWF,' file '//Modflow.FNameDDN_GWF(:len_trim(Modflow.FNameDDN_GWF))
+        write(TmpSTR,'(a,i5,a)')'Reading '//domain.name//' saturation data from unit ',domain.iDDN,' file '//domain.FNameDDN(:len_trim(domain.FNameDDN))
         call msg(TmpSTR)
-        call msg('    Period      Step     Layer      Time Cell1SAT             Name')
+        if(domain.name=='GWF') then
+            call msg('    Period      Step     Layer      Time  Cell1Sat           Name')
+            do i=1,Modflow.ntime
+                DO K=1,NLAY
+                    NNDLAY = NODLAY(K)
+                    NSTRT = NODLAY(K-1)+1
+                    NDSLAY = NNDLAY - NODLAY(K-1)          
+                    CALL ULASAVURD(domain.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                        TOTIMREAD,NSTRT,NNDLAY,ILAY,domain.iDDN,NODES)
+                    WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,domain.sat(1,i),TEXT
+                    call msg(TmpSTR)
+                END DO
+            end do
+        else
+            call msg('    Period      Step      Time  Cell1Sat            Name')
+            do i=1,Modflow.ntime
+                IDUM = 1
+                CALL ULASAVRD(domain.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
+                    TOTIMREAD,domain.ncells,IDUM,IDUM,domain.iDDN)
+                WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,domain.sat(1,i),TEXT
+                call msg(TmpSTR)
+            end do
+        endif
 
-        do i=1,Modflow.ntime
-            IDUM = 1
-            DO K=1,NLAY
-              NNDLAY = NODLAY(K)
-              NSTRT = NODLAY(K-1)+1
-              NDSLAY = NNDLAY - NODLAY(K-1)          
-              CALL ULASAVURD(Modflow.gwf.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                  TOTIMREAD,NSTRT,NNDLAY,ILAY,Modflow.iDDN_GWF,NODES)
-              WRITE(TmpSTR,'(3(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,K,TOTIMREAD,Modflow.gwf.sat(1,i),TEXT
-              call msg(TmpSTR)
-            END DO
-        end do
+    end subroutine MUSG_ReadBinary_DDN_File
 
-    end subroutine MUSG_ReadBinary_GWF_DDN_File
-    
-
-    
-    subroutine MUSG_ReadBinary_GWF_CBB_File(Modflow)
+    subroutine MUSG_ReadBinary_CBB_File(Modflow, domain)
     ! borrowed from J. Doherty.
         implicit none
 
@@ -6036,120 +5835,142 @@ module MUSG !
 
         integer :: kstp,kper,NVAL,idum,ICODE
         character*16   :: text
+        character*16  :: CompName(100)
+        real, allocatable :: dummy(:)
         
         
-        integer :: KSTP_last
         !real :: rmin
         !real :: rmax
-        integer :: ntime, i
+        integer :: i, j, k, ncomp
 
         
         type (ModflowProject) Modflow
+        type (ModflowDomain) domain
 
+
+        FNum=domain.iCBB
+        
         call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading GWF cell-by-cell flow data from unit ',Modflow.iCBB_GWF,' file '//Modflow.FNameCBB_GWF(:len_trim(Modflow.FNameCBB_GWF))
+        write(TmpSTR,'(a,i5,a)')'Reading '//domain.name//' cell-by-cell flow data from unit ',domain.iCBB,' file '//domain.FNameCBB(:len_trim(domain.FNameCBB))
         call msg(TmpSTR)
+        
+        ! Count cbb components
+        call msg('   Component       Name')
+        domain.nComp=0
+        Component2: do 
+                read(FNum,iostat=status) KSTP,KPER,TEXT,NVAL,idum,ICODE
+                
+                if(status/=0) then
+                    exit
+                endif
+              
+                if((NVAL.le.0)) cycle
+                if(ICODE .gt. 0)then
+                    allocate(dummy(NVAL))
+                    read(FNum) (dummy(I),I=1,NVAL)
+                    deallocate(dummy)
+
+                    if(CompName(1)==text) exit
+                    domain.nComp=domain.nComp+1
+                    CompName(domain.nComp)=text
+                    write(TmpSTR,*) domain.nComp,CompName(domain.nComp)
+                    call Msg(TmpSTR)
+
+                    cycle
+                endif
+            end do component2    
+        
+        continue
+        
+        rewind(FNum)
         call msg('    Period      Step      NVAL     ICODE            Name')
+        do j=1,modflow.ntime
+            do k=1,domain.nComp
+                read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
+                WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
+                call Msg(TmpSTR)
 
-        ntime=0
-        KSTP_last=0
-        FNum=Modflow.iCBB_GWF
-        do
-            read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
-            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
-            call Msg(TmpSTR)
-
-            if(KSTP .ne. KSTP_last) then
-                KSTP_last=KSTP
-                ntime=ntime+1 
-            endif
 
               
-            if((NVAL.le.0)) go to 9300
-            if(ICODE .gt. 0)then
-                if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                    if(ntime .eq.1) then
-                        allocate(Modflow.gwf.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
-                        Modflow.gwf.Cbb_FLOW_FACE=0
-                    endif
-                    read(FNum,err=9400,end=9400) (Modflow.gwf.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,Modflow.gwf.Cbb_FLOW_FACE(I,ntime))
-                    !    rmin=min(rmin,Modflow.gwf.Cbb_FLOW_FACE(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else 
-                    if(ntime .eq.1) THEN
-                        if(index(text,'STORAGE') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_STORAGE(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_STORAGE=0
-                            
-                        else if(index(text,'CONSTANT HEAD') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_CONSTANT_HEAD=0
-                            
-                        else if(index(text,'RECHARGE') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_RECHARGE(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_RECHARGE=0
-                            
-                        else if(index(text,'DRAINS') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_DRAINS(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_DRAINS=0
-                            
-                        else if(index(text,'CLN') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_CLN(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_CLN=0
-                            
-                        else if(index(text,'SWF') .ne.0) then
-	                        allocate(Modflow.gwf.cbb_SWF(NVAL,Modflow.ntime))
-                            Modflow.gwf.cbb_SWF=0
-                        else 
-                            call ErrMsg(Modflow.FNameCBB_GWF(:len_trim(Modflow.FNameCBB_GWF))//': TEXT variable '//text//' not currently recognized ')
-                            
-                        end if
-                    endif  
-
-                    if(index(text,'STORAGE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_STORAGE(I,ntime),I=1,NVAL)
+                if((NVAL.le.0)) go to 9300
+                if(ICODE .gt. 0)then
+                    if(index(TEXT,'FLOW JA FACE') .ne. 0 .or. &
+                       index(TEXT,'FLOW CLN FACE') .ne. 0 .or. &
+                       index(TEXT,'FLOW SWF FACE') .ne. 0) then
+                        if(j==1) then
+                            allocate(domain.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
+                            domain.Cbb_FLOW_FACE=0
+                        endif
+                        read(FNum,err=9400,end=9400) (domain.Cbb_FLOW_FACE(I,j),I=1,NVAL)
                         !rmax=-1e20
                         !rmin=1e20
                         !do i=1,nval
-                        !    rmax=max(rmax,Modflow.gwf.cbb_STORAGE(I,ntime))
-                        !    rmin=min(rmin,Modflow.gwf.cbb_STORAGE(I,ntime))
+                        !    rmax=max(rmax,domain.Cbb_FLOW_FACE(I,ntime))
+                        !    rmin=min(rmin,domain.Cbb_FLOW_FACE(I,ntime))
                         !enddo
                         !write(*,*) text
                         !write(*,*) nval
                         !write(*,*) rmin
                         !write(*,*) rmax
-                    else if(index(text,'CONSTANT HEAD') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
+                    else if(index(text,'STORAGE') .ne.0) then
+                        if(j==1) THEN
+                            allocate(domain.cbb_STORAGE(NVAL,Modflow.ntime))
+                            domain.cbb_STORAGE=0
+                        endif
+                        read(FNum,err=9400,end=9400) (domain.cbb_STORAGE(I,j),I=1,NVAL)
 
+                    else if(index(text,'CONSTANT HEAD') .ne.0 .or. &
+                            index(text,'CLN CONST HEAD') .ne.0 .or. &
+                            index(text,'SWF CONST HEAD') .ne.0) then
+                        if(j==1) THEN
+	                        allocate(domain.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
+                            domain.cbb_CONSTANT_HEAD=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_CONSTANT_HEAD(I,j),I=1,NVAL)
+                            
                     else if(index(text,'RECHARGE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_RECHARGE(I,ntime),I=1,NVAL)
-                        
+                        if(j==1) THEN
+	                        allocate(domain.cbb_RECHARGE(NVAL,Modflow.ntime))
+                            domain.cbb_RECHARGE=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_RECHARGE(I,j),I=1,NVAL)
+                            
                     else if(index(text,'DRAINS') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_DRAINS(I,ntime),I=1,NVAL)
-                        
+                        if(j==1) THEN
+	                            allocate(domain.cbb_DRAINS(NVAL,Modflow.ntime))
+                                domain.cbb_DRAINS=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_DRAINS(I,j),I=1,NVAL)
+                            
                     else if(index(text,'CLN') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_CLN(I,ntime),I=1,NVAL)
-                        
+                        if(j==1) THEN
+	                            allocate(domain.cbb_CLN(NVAL,Modflow.ntime))
+                                domain.cbb_CLN=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_CLN(I,j),I=1,NVAL)
+                            
                     else if(index(text,'SWF') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.gwf.cbb_SWF(I,ntime),I=1,NVAL)
-                        
+                        if(j==1) THEN
+	                            allocate(domain.cbb_SWF(NVAL,Modflow.ntime))
+                                domain.cbb_SWF=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_SWF(I,j),I=1,NVAL)
+                    else if(index(text,'GWF') .ne.0) then
+                        if(j==1) THEN
+	                            allocate(domain.cbb_GWF(NVAL,Modflow.ntime))
+                                domain.cbb_GWF=0
+                        end if
+                        read(FNum,err=9400,end=9400) (domain.cbb_GWF(I,j),I=1,NVAL)
+
+                    else 
+                        call ErrMsg(domain.FNameCBB(:len_trim(domain.FNameCBB))//': TEXT variable '//text//' not currently recognized ')
                     end if
-                  
-                  
-                endif
-            else if(ICODE .eq. -1) then
-                      call Msg( 'The budget data is written in the compact budget style.')
-                      call Msg( 'Not supported yet.')
-                      stop
-            end if
+                else if(ICODE .eq. -1) then
+                    call Msg( 'The budget data is written in the compact budget style.')
+                    call Msg( 'Not supported yet.')
+                    stop
+                end if
+            end do 
 
 
 
@@ -6158,36 +5979,8 @@ module MUSG !
 9400    continue
 1000    continue
  
-    end subroutine MUSG_ReadBinary_GWF_CBB_File
+    end subroutine MUSG_ReadBinary_CBB_File
 
-    subroutine MUSG_ReadBinary_CLN_HDS_File(Modflow)
-        implicit none
-        
-        integer :: i
-        character*16   :: text
-        
-        integer :: idum, KSTPREAD,KPERREAD
-        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
-        
-        type (ModflowProject) Modflow
-
-        allocate(Modflow.cln.head(Modflow.cln.nCells,Modflow.ntime))
-        
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading CLN head data from unit ',Modflow.iHDS_CLN,' file '//Modflow.FNameHDS_CLN(:len_trim(Modflow.FNameHDS_CLN))
-        call msg(TmpSTR)
-        call msg('    Period      Step      Time Cell1Head            Name')
-
-        do i=1,Modflow.ntime
-            IDUM = 1
-            CALL ULASAVRD(Modflow.cln.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                TOTIMREAD,NCLNNDS,IDUM,IDUM,Modflow.iHDS_CLN)
-            WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,Modflow.cln.head(1,i),TEXT
-            call msg(TmpSTR)
-        end do
-
-    end subroutine MUSG_ReadBinary_CLN_HDS_File
-    
     SUBROUTINE ULASAVRD(BUF,TEXT,KSTP,KPER,PERTIM,TOTIM,NCOL,&
                         NROW,ILAY,ICHN)
 !     ******************************************************************
@@ -6246,502 +6039,6 @@ module MUSG !
       RETURN
       END SUBROUTINE ULASAVURD
     
-    subroutine MUSG_ReadBinary_CLN_DDN_File(Modflow)
-        implicit none
-        
-        integer :: i
-        character*16   :: text
-        
-        integer :: idum, KSTPREAD,KPERREAD
-        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
-        
-        type (ModflowProject) Modflow
-
-        allocate(Modflow.cln.sat(Modflow.cln.nCells,Modflow.ntime))
-
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading CLN saturation(DDN) data from unit ',Modflow.iDDN_CLN,' file '//Modflow.FNameDDN_CLN(:len_trim(Modflow.FNameDDN_CLN))
-        call msg(TmpSTR)
-        call msg('    Period      Step      Time Cell1Head            Name')
- 
-        IOUT=FNumEco
-        do i=1,Modflow.ntime
-            IDUM = 1
-            CALL ULASAVRD(Modflow.cln.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                TOTIMREAD,NCLNNDS,IDUM,IDUM,Modflow.iDDN_CLN)
-            WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,Modflow.cln.sat(1,i),TEXT
-            call msg(TmpSTR)
-        end do
-
-    end subroutine MUSG_ReadBinary_CLN_DDN_File
-
-    !subroutine MUSG_ReadBinary_CLN_CBB_File(Modflow)
-    !    implicit none
-    !    
-    !    integer :: i
-    !    character*16   :: text
-    !    
-    !    integer :: inu, idum, KSTPREAD,KPERREAD
-    !    DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
-    !    
-    !    type (ModflowProject) Modflow
-    !
-    !    allocate(Modflow.cln.FLX_BAL_ERR(Modflow.cln.nCells,Modflow.ntime))
-    !
-    !    write(TmpSTR,'(a,i5,a)')'Reading CLN cell by cell flow data from unit ',Modflow.iCBB_CLN,' file '//Modflow.FNameCBB_CLN(:len_trim(Modflow.FNameCBB_CLN))
-    !    call msg(TmpSTR)
-    !    call msg('Period Step Time Text')
-    !
-    !    INU=Modflow.iCBB_CLN
-    !    IOUT=FNumEco
-    !    do i=1,Modflow.ntime
-    !        !INU = ICLNCB
-    !        IDUM = 1
-    !        CALL ULASAVRD(Modflow.cln.FLX_BAL_ERR(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-    !            TOTIMREAD,NCLNNDS,IDUM,IDUM,INU)
-    !        WRITE(TmpSTR,'(i10, i10, F10.3, a)')KPERREAD,KSTPREAD,TOTIMREAD,TEXT
-    !        call msg(TmpSTR)
-    !
-    !    end do
-    !
-    !end subroutine MUSG_ReadBinary_CLN_CBB_File
-
-    subroutine MUSG_ReadBinary_CLN_CBB_File(Modflow)
-    ! borrowed from J. Doherty.
-        implicit none
-
-        integer :: Fnum
-
-        integer :: kstp,kper,NVAL,idum,ICODE, i
-        character*16   :: text
-        
-        
-        integer :: KSTP_last
-        !real :: rmin
-        !real :: rmax
-        integer :: ntime
-
-        
-        type (ModflowProject) Modflow
-
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading CLN cell-by-cell flow data from unit ',Modflow.iCBB_CLN,' file '//Modflow.FNameCBB_CLN(:len_trim(Modflow.FNameCBB_CLN))
-        call msg(TmpSTR)
-        call msg('    Period      Step      NVAL     ICODE            Name')
-
-        ntime=0
-        KSTP_last=0
-        FNum=Modflow.iCBB_CLN
-        do
-            read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
-            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
-            call Msg(TmpSTR)
-
-            if(KSTP .ne. KSTP_last) then
-                KSTP_last=KSTP
-                ntime=ntime+1 
-            endif
-
-              
-            if((NVAL.le.0)) go to 9300
-            if(ICODE .gt. 0)then
-                if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                    if(ntime .eq.1) allocate(Modflow.cln.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
-                    read(FNum,err=9400,end=9400) (Modflow.cln.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,Modflow.cln.Cbb_FLOW_FACE(I,ntime))
-                    !    rmin=min(rmin,Modflow.cln.Cbb_FLOW_FACE(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else 
-                    if(ntime .eq.1) THEN
-                        if(index(text,'CLN STORAGE') .ne.0) then
-	                        allocate(Modflow.cln.cbb_STORAGE(NVAL,Modflow.ntime))
-                        else if(index(text,'CLN CONST HEAD') .ne.0) then
-	                        allocate(Modflow.cln.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
-                        else if(index(text,'FLOW CLN FACE') .ne.0) then
-	                        allocate(Modflow.cln.cbb_FLOW_FACE(NVAL,Modflow.ntime))
-                            
-                        else if(index(text,'GWF') .ne.0) then
-	                        allocate(Modflow.cln.cbb_GWF(NVAL,Modflow.ntime))
-                            
-                            
-                        else if(index(text,'RECHARGE') .ne.0) then
-	                        allocate(Modflow.cln.cbb_RECHARGE(NVAL,Modflow.ntime))
-                        else if(index(text,'DRAINS') .ne.0) then
-	                        allocate(Modflow.cln.cbb_DRAINS(NVAL,Modflow.ntime))
-                        end if
-                    endif  
-
-                    if(index(text,'CLN STORAGE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_STORAGE(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.cln.cbb_STORAGE(I,ntime))
-                        !    rmin=min(rmin,Modflow.cln.cbb_STORAGE(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'CLN CONST HEAD') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.cln.cbb_CONSTANT_HEAD(I,ntime))
-                        !    rmin=min(rmin,Modflow.cln.cbb_CONSTANT_HEAD(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'FLOW CLN FACE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_FLOW_FACE(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.cln.cbb_RECHARGE(I,ntime))
-                        !    rmin=min(rmin,Modflow.cln.cbb_RECHARGE(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'DRAINS') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.cln.cbb_DRAINS(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.cln.cbb_DRAINS(I,ntime))
-                        !    rmin=min(rmin,Modflow.cln.cbb_DRAINS(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    end if
-                  
-                  
-                endif
-            else if(ICODE .eq. -1) then
-                      call Msg( 'The budget data is written in the compact budget style.')
-                      call Msg( 'Not supported yet.')
-                      stop
-            end if
-
-
-
-        end do
-9300    continue
-9400    continue
-1000    continue
- 
-    end subroutine MUSG_ReadBinary_CLN_CBB_File
-    
-
-    
-    subroutine MUSG_ReadBinary_SWF_HDS_File(Modflow)
-        implicit none
-        
-        integer :: i
-        character*16   :: text
-        
-        integer :: idum, KSTPREAD,KPERREAD
-        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
-        
-        type (ModflowProject) Modflow
-
-        allocate(Modflow.swf.head(Modflow.swf.nCells,Modflow.ntime))
-        
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading SWF head data from unit ',Modflow.iHDS_SWF,' file '//Modflow.FNameHDS_SWF(:len_trim(Modflow.FNameHDS_SWF))
-        call msg(TmpSTR)
-        call msg('    Period      Step      Time Cell1Head            Name')
-
-        do i=1,Modflow.ntime
-            IDUM = 1
-            CALL ULASAVRD(Modflow.swf.head(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                TOTIMREAD,NSWFNDS,IDUM,IDUM,Modflow.iHDS_SWF)
-            WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,Modflow.swf.head(1,i),TEXT
-            call msg(TmpSTR)
-        end do
-
-    end subroutine MUSG_ReadBinary_SWF_HDS_File
-
-    subroutine MUSG_ReadBinary_SWF_DDN_File(Modflow)
-        implicit none
-        
-        integer :: i
-        character*16   :: text
-        
-        integer :: idum, KSTPREAD,KPERREAD
-        DOUBLE PRECISION :: TOTIMREAD,PERTIMREAD
-        
-        type (ModflowProject) Modflow
-
-        allocate(Modflow.swf.sat(Modflow.swf.nCells,Modflow.ntime))
-
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading SWF saturation(DDN) data from unit ',Modflow.iDDN_SWF,' file '//Modflow.FNameDDN_SWF(:len_trim(Modflow.FNameDDN_SWF))
-        call msg(TmpSTR)
-        call msg('    Period      Step      Time Cell1Head            Name')
- 
-        IOUT=FNumEco
-        do i=1,Modflow.ntime
-            IDUM = 1
-            CALL ULASAVRD(Modflow.swf.sat(:,i),TEXT,KSTPREAD,KPERREAD,PERTIMREAD,&
-                TOTIMREAD,NSWFNDS,IDUM,IDUM,Modflow.iDDN_SWF)
-            WRITE(TmpSTR,'(2(i10), 2(f10.3), a)') KPERREAD,KSTPREAD,TOTIMREAD,Modflow.swf.sat(1,i),TEXT
-            call msg(TmpSTR)
-        end do
-
-    end subroutine MUSG_ReadBinary_SWF_DDN_File
-    
-    
-    !    subroutine MUSG_ReadBinary_SWF_HDS_File(Modflow)
-!    ! borrowed from J. Doherty.
-!        implicit none
-!        
-!        integer :: FNum
-!
-!        integer :: kstp,kper
-!        real     :: pertim
-!        real   :: totim
-!        integer :: i
-!        character*16   :: text
-!        integer  :: ilay        
-!        real     :: rtemp  
-!        integer  :: nstrt,nend,nstrt_kp,nument
-!        integer :: inode, ii
-!
-!        
-!        type (ModflowProject) Modflow
-!
-!        !if(.not. Modflow.gwf.have_mesh) call ErrMsg('Must read mesh from GSF file first')
-!        
-!        allocate(Modflow.swf.head(Modflow.swf.nCells,Modflow.ntime))
-!
-!        FNum=Modflow.iHDS_SWF
-!        do i=1,Modflow.ntime
-!          read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
-!          
-!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-!          if(index(text,'swf').ne.0)then
-!            nstrt_kp=nstrt
-!            nstrt=nend
-!            nend=nstrt_kp
-!            nument=nend-nstrt+1
-!            if(nument.le.0)then
-!              call msg('nument.le.0')
-!              continue
-!            end if
-!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-!          else
-!              read(FNum,end=9400) (Modflow.swf.head(inode,i),inode=nstrt,nend)
-!              !write(*,*) totim,nstrt,Modflow.gwf.head(nstrt,i)
-!          end if
-!
-!        end do
-!
-!9300    continue
-!9400    continue
-!1000    continue
-!        
-!        
-!        
-!    end subroutine MUSG_ReadBinary_SWF_HDS_File
-    
-!    subroutine MUSG_ReadBinary_SWF_DDN_File(Modflow)
-!    ! borrowed from J. Doherty.
-!        implicit none
-!
-!        integer :: Fnum
-!
-!        integer  :: kstp,kper
-!        real     :: pertim
-!        real     :: totim
-!        integer :: i
-!        character*16   :: text
-!        integer  :: ilay        
-!        real     :: rtemp  
-!        integer  :: nstrt,nend,nstrt_kp,nument
-!        integer :: inode, ii
-!
-!        
-!        type (ModflowProject) Modflow
-!
-!        allocate(Modflow.swf.sat(Modflow.swf.nCells,Modflow.ntime))
-!        
-!        FNum=Modflow.iDDN_SWF
-!        do i=1,Modflow.ntime
-!          read(FNum,err=9300,end=1000) kstp,kper,pertim,totim,text,nstrt,nend,ilay
-!          if((nstrt.le.0).or.(nend.le.0).or.(ilay.le.0)) go to 9300
-!          if(index(text,'swf').ne.0)then
-!            nstrt_kp=nstrt
-!            nstrt=nend
-!            nend=nstrt_kp
-!            nument=nend-nstrt+1
-!            if(nument.le.0)then
-!              call msg('nument.le.0')
-!              continue
-!            end if
-!            read(FNum,err=9400,end=9400) (rtemp,ii=1,nument)
-!          else
-!              read(FNum,err=9400,end=9400) (Modflow.swf.sat(inode,i),inode=nstrt,nend)
-!              !write(*,*) totim,nstrt,Modflow.gwf.sat(nstrt,Modflow.ntime)
-!          end if
-!
-!        end do
-!9300    continue
-!9400    continue
-!1000    continue
-!    end subroutine MUSG_ReadBinary_SWF_DDN_File
-
-    subroutine MUSG_ReadBinary_SWF_CBB_File(Modflow)
-    ! borrowed from J. Doherty.
-        implicit none
-
-        integer :: Fnum
-
-        integer :: kstp,kper,NVAL,idum,ICODE, i
-        character*16   :: text
-        
-        
-        integer :: KSTP_last
-        !real :: rmin
-        !real :: rmax
-        integer :: ntime
-
-        
-        type (ModflowProject) Modflow
-
-        call msg(' ')
-        write(TmpSTR,'(a,i5,a)')'Reading SWF cell-by-cell flow data from unit ',Modflow.iCBB_SWF,' file '//Modflow.FNameCBB_SWF(:len_trim(Modflow.FNameCBB_SWF))
-        call msg(TmpSTR)
-        call msg('    Period      Step      NVAL     ICODE            Name')
-
-        ntime=0
-        KSTP_last=0
-        FNum=Modflow.iCBB_SWF
-        do
-            read(FNum,err=9300,end=1000) KSTP,KPER,TEXT,NVAL,idum,ICODE
-            WRITE(TmpSTR,'(4(i10),(a))') KPER,KSTP,NVAL,ICODE,TEXT
-            call Msg(TmpSTR)
-
-            if(KSTP .ne. KSTP_last) then
-                KSTP_last=KSTP
-                ntime=ntime+1 
-            endif
-
-              
-            if((NVAL.le.0)) go to 9300
-            if(ICODE .gt. 0)then
-                if(index(TEXT,'FLOW JA FACE') .ne. 0) then
-                    if(ntime .eq.1) allocate(Modflow.swf.Cbb_FLOW_FACE(NVAL,Modflow.ntime))
-                    read(FNum,err=9400,end=9400) (Modflow.swf.Cbb_FLOW_FACE(I,ntime),I=1,NVAL)
-                    !rmax=-1e20
-                    !rmin=1e20
-                    !do i=1,nval
-                    !    rmax=max(rmax,Modflow.swf.Cbb_FLOW_FACE(I,ntime))
-                    !    rmin=min(rmin,Modflow.swf.Cbb_FLOW_FACE(I,ntime))
-                    !enddo
-                    !write(*,*) text
-                    !write(*,*) nval
-                    !write(*,*) rmin
-                    !write(*,*) rmax
-                else 
-                    if(ntime .eq.1) THEN
-                        if(index(text,'SWF STORAGE') .ne.0) then
-	                        allocate(Modflow.swf.cbb_STORAGE(NVAL,Modflow.ntime))
-                        else if(index(text,'SWF CONST HEAD') .ne.0) then
-	                        allocate(Modflow.swf.cbb_CONSTANT_HEAD(NVAL,Modflow.ntime))
-                        else if(index(text,'FLOW SWF FACE') .ne.0) then
-	                        allocate(Modflow.swf.cbb_FLOW_FACE(NVAL,Modflow.ntime))
-                            
-                        else if(index(text,'GWF') .ne.0) then
-	                        allocate(Modflow.swf.cbb_GWF(NVAL,Modflow.ntime))
-                            
-                            
-                        else if(index(text,'RECHARGE') .ne.0) then
-	                        allocate(Modflow.swf.cbb_RECHARGE(NVAL,Modflow.ntime))
-                        else if(index(text,'DRAINS') .ne.0) then
-	                        allocate(Modflow.swf.cbb_DRAINS(NVAL,Modflow.ntime))
-                        end if
-                    endif  
-
-                    if(index(text,'SWF STORAGE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_STORAGE(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.swf.cbb_STORAGE(I,ntime))
-                        !    rmin=min(rmin,Modflow.swf.cbb_STORAGE(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'SWF CONST HEAD') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_CONSTANT_HEAD(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.swf.cbb_CONSTANT_HEAD(I,ntime))
-                        !    rmin=min(rmin,Modflow.swf.cbb_CONSTANT_HEAD(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'FLOW SWF FACE') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_FLOW_FACE(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.swf.cbb_RECHARGE(I,ntime))
-                        !    rmin=min(rmin,Modflow.swf.cbb_RECHARGE(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    else if(index(text,'DRAINS') .ne.0) then
-                        read(FNum,err=9400,end=9400) (Modflow.swf.cbb_DRAINS(I,ntime),I=1,NVAL)
-                        !rmax=-1e20
-                        !rmin=1e20
-                        !do i=1,nval
-                        !    rmax=max(rmax,Modflow.swf.cbb_DRAINS(I,ntime))
-                        !    rmin=min(rmin,Modflow.swf.cbb_DRAINS(I,ntime))
-                        !enddo
-                        !write(*,*) text
-                        !write(*,*) nval
-                        !write(*,*) rmin
-                        !write(*,*) rmax
-                    end if
-                  
-                  
-                endif
-            else if(ICODE .eq. -1) then
-                      call Msg( 'The budget data is written in the compact budget style.')
-                      call Msg( 'Not supported yet.')
-                      stop
-            end if
-
-
-
-        end do
-9300    continue
-9400    continue
-1000    continue
- 
-    end subroutine MUSG_ReadBinary_SWF_CBB_File
     
    
     subroutine MUSG_ReadBAS6_Options(Modflow)
@@ -6966,6 +6263,13 @@ module MUSG !
             ENDDO
             DEALLOCATE(HTMP18)
         ENDIF
+
+        do n=1,NODES
+            modflow.gwf.ibound(n)=ibound(n)
+            modflow.gwf.hnew(n)=hnew(n)
+        end do
+
+        
         !
         !----------------------------------------------------------------------
         !4------RETURN.
@@ -8751,15 +8055,251 @@ module MUSG !
                 write(FNumStepPeriodTime,*) iTStep, iPeriod, TotalTime
 
             end if
-                
+              
 
         end do
                 
     end subroutine MUSG_CreateStepPeriodTimeFile
     
-    subroutine MUSG_GWF_HDS_DDN_ToTecplot(Modflow)
+    subroutine MUSG_ToTecplot(Modflow,domain)
         implicit none
         type (ModflowProject) Modflow
+        type(ModflowDomain) domain
+
+        integer :: Fnum
+        character(MAXLBL) :: FName
+        integer :: i, j, nvar, nVarShared
+
+        character(4000) :: line
+        character(4000) :: VarSharedStr
+
+
+        ! tecplot output file
+        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.'//domain.name//'.tecplot.dat'
+        call OpenAscii(FNum,FName)
+        call Msg( 'To File: '//trim(FName))
+
+        write(FNum,*) 'Title = "Modflow Project: '//Modflow.Prefix(:len_trim(Modflow.Prefix))//'"'
+
+        ! static variables
+        VarSTR='variables="X","Y","Z","Layer","Ibound","Initial head",'
+        nVar=6
+        
+        if(allocated(domain.HK)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"Kh",'
+            nVar=nVar+1
+        endif
+        
+        if(allocated(domain.head)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"'//domain.name//'\\n Hydraulic Head",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.sat)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"Saturation",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_STORAGE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To STORAGE",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_CONSTANT_HEAD)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To CONSTANT_HEAD",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_RECHARGE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To RECHARGE",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_DRAINS)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To DRAINS",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_CLN)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To CLN",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_SWF)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To SWF",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_GWF)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To GWF",'
+            nVar=nVar+1
+        endif
+        if(allocated(domain.cbb_FLOW_FACE)) then
+            VarSTR=VarSTR(:len_trim(VarSTR))//'"To FLOW_FACES",'
+            nVar=nVar+1
+        endif
+        
+        
+        write(FNum,'(a)') VarSTR(:len_trim(VarSTR))
+            
+        write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="'//domain.name//'" SOLUTIONTIME=',modflow.TIMOT(1),',N=',domain.nNodes,', E=',domain.nCells,&
+            ', datapacking=block, zonetype='//domain.ElementType(:len_trim(domain.ElementType))
+        
+        CellCenteredSTR=', VARLOCATION=([4'
+        if(nVar.ge.5) then
+            do j=5,nVar
+                write(str2,'(i2)') j
+                CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//','//str2
+            end do
+        endif
+        CellCenteredSTR=CellCenteredSTR(:len_trim(CellCenteredSTR))//']=CELLCENTERED)'
+
+        write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))//&
+            ', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
+            ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
+        
+
+        write(FNum,'(a)') '# x'
+        write(FNum,'(5e20.12)') (domain.x(i),i=1,domain.nNodes)
+        write(FNum,'(a)') '# y'
+        write(FNum,'(5e20.12)') (domain.y(i),i=1,domain.nNodes)
+        write(FNum,'(a)') '# z'
+        write(FNum,'(5e20.12)') (domain.z(i),i=1,domain.nNodes)
+        write(FNum,'(a)') '# layer'
+        write(FNum,'(5i8)') (domain.lay(i),i=1,domain.nCells)
+        write(FNum,'(a)') '# ibound'
+        write(FNum,'(5i8)') (domain.ibound(i),i=1,domain.nCells)
+        write(FNum,'(a)') '# hnew'
+        write(FNum,'(5e20.12)') (domain.hnew(i),i=1,domain.nCells)
+        nVarShared=6
+        if(allocated(domain.HK)) then
+            write(FNum,'(a)') '# Kh'
+            write(FNum,'(5e20.12)') (domain.Hk(i),i=1,domain.nCells)
+            nVarShared=nVarShared+1
+        endif
+        
+        if(allocated(domain.head)) then
+            write(FNum,'(a)') '# head'
+            write(FNum,'(5e20.12)') (domain.head(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.sat)) then
+            write(FNum,'(a)') '# saturation'
+            write(FNum,'(5e20.12)') (domain.sat(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_STORAGE)) then
+            write(FNum,'(a)') '# cbb_STORAGE'
+            write(FNum,'(5e20.12)') (domain.cbb_STORAGE(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_CONSTANT_HEAD)) then
+            write(FNum,'(a)') '# cbb_CONSTANT_HEAD'
+            write(FNum,'(5e20.12)') (domain.cbb_CONSTANT_HEAD(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_RECHARGE)) then
+            write(FNum,'(a)') '# cbb_RECHARGE'
+            write(FNum,'(5e20.12)') (domain.cbb_RECHARGE(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_DRAINS)) then
+            write(FNum,'(a)') '# cbb_DRAINS'
+            write(FNum,'(5e20.12)') (domain.cbb_DRAINS(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_CLN)) then
+            write(FNum,'(a)') '# cbb_CLN'
+            write(FNum,'(5e20.12)') (domain.cbb_CLN(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_SWF)) then
+            write(FNum,'(a)') '# cbb_SWF'
+            write(FNum,'(5e20.12)') (domain.cbb_SWF(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_GWF)) then
+            write(FNum,'(a)') '# cbb_GWF'
+            write(FNum,'(5e20.12)') (domain.cbb_GWF(i,1),i=1,domain.nCells)
+        endif
+        if(allocated(domain.cbb_FLOW_FACE)) then
+            write(FNum,'(a)') '# cbb_FLOW_FACE'
+            write(FNum,'(5e20.12)') (domain.cbb_FLOW_FACE(i,1),i=1,domain.nCells)
+        endif
+        
+        do i=1,domain.nCells
+            write(FNum,'(8i8)') (domain.iNode(j,i),j=1,domain.nNodesPerCell)
+        end do
+        
+        VarSharedSTR=', VARSHARELIST=([1,2,3,4,5,6'
+        if(nVarShared > 6) then
+            do j=7,nVarShared
+                write(str2,'(i2)') j
+                VarSharedSTR=VarSharedSTR(:len_trim(VarSharedSTR))//','//str2
+            end do
+        endif
+        VarSharedSTR=VarSharedSTR(:len_trim(VarSharedSTR))//'])'
+        
+        do j=2,Modflow.ntime
+            write(ZoneSTR,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="'//domain.name//'" SOLUTIONTIME=',modflow.TIMOT(j),',N=',domain.nNodes,', E=',domain.nCells,&
+                ', datapacking=block, zonetype='//domain.ElementType(:len_trim(domain.ElementType))
+        
+            write(FNum,'(a)') ZoneSTR(:len_trim(ZoneSTR))//CellCenteredSTR(:len_trim(CellCenteredSTR))&
+                //VarSharedSTR(:len_trim(VarSharedSTR))//', CONNECTIVITYSHAREZONE=1 & 
+                , AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'//&
+                ', AUXDATA LengthUnits = "'//Modflow.Lunits(:len_trim(Modflow.Lunits))//'"'
+        
+
+            !write(FNum,'(a)') '# x'
+            !write(FNum,'(5e20.12)') (domain.x(i),i=1,domain.nNodes)
+            !write(FNum,'(a)') '# y'
+            !write(FNum,'(5e20.12)') (domain.y(i),i=1,domain.nNodes)
+            !write(FNum,'(a)') '# z'
+            !write(FNum,'(5e20.12)') (domain.z(i),i=1,domain.nNodes)
+            !write(FNum,'(a)') '# layer'
+            !write(FNum,'(5i8)') (domain.lay(i),i=1,domain.nCells)
+        
+            if(allocated(domain.head)) then
+                write(FNum,'(a)') '# head'
+                write(FNum,'(5e20.12)') (domain.head(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.sat)) then
+                write(FNum,'(a)') '# saturation'
+                write(FNum,'(5e20.12)') (domain.sat(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_STORAGE)) then
+                write(FNum,'(a)') '# cbb_STORAGE'
+                write(FNum,'(5e20.12)') (domain.cbb_STORAGE(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_CONSTANT_HEAD)) then
+                write(FNum,'(a)') '# cbb_CONSTANT_HEAD'
+                write(FNum,'(5e20.12)') (domain.cbb_CONSTANT_HEAD(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_RECHARGE)) then
+                write(FNum,'(a)') '# cbb_RECHARGE'
+                write(FNum,'(5e20.12)') (domain.cbb_RECHARGE(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_DRAINS)) then
+                write(FNum,'(a)') '# cbb_DRAINS'
+                write(FNum,'(5e20.12)') (domain.cbb_DRAINS(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_CLN)) then
+                write(FNum,'(a)') '# cbb_CLN'
+                write(FNum,'(5e20.12)') (domain.cbb_CLN(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_SWF)) then
+                write(FNum,'(a)') '# cbb_SWF'
+                write(FNum,'(5e20.12)') (domain.cbb_SWF(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_GWF)) then
+                write(FNum,'(a)') '# cbb_GWF'
+                write(FNum,'(5e20.12)') (domain.cbb_GWF(i,j),i=1,domain.nCells)
+            endif
+            if(allocated(domain.cbb_FLOW_FACE)) then
+                write(FNum,'(a)') '# cbb_FLOW_FACE'
+                write(FNum,'(5e20.12)') (domain.cbb_FLOW_FACE(i,j),i=1,domain.nCells)
+            endif
+            !write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',domain.nNodes,', E=',domain.nCells,', datapacking=block, &
+            !zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
+            !write(FNum,'(a)') '# head'
+            !write(FNum,'(5e20.12)') (domain.head(i,j),i=1,domain.nCells)
+            !write(FNum,'(a)') '# sat'
+            !write(FNum,'(5e20.12)') (domain.sat(i,j),i=1,domain.nCells)
+        enddo
+        
+        call FreeUnit(FNum)
+
+    end subroutine MUSG_ToTecplot
+
+    
+    subroutine MUSG_HDS_DDN_ToTecplot(Modflow,domain)
+        implicit none
+        type (ModflowProject) Modflow
+        type(ModflowDomain) domain
 
         integer :: Fnum
         character(MAXLBL) :: FName
@@ -8767,22 +8307,22 @@ module MUSG !
         character(4000) :: output_line
 
 
-      !  if(.not. Modflow.gwf.have_mesh) then
+      !  if(.not. domain.have_mesh) then
 		    !call ErrMsg('ERROR: no mesh information')
 		    !stop
       !  endif
         
         ! tecplot output file
-        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.GWF.HDS_DDN.tecplot.dat'
+        FName=Modflow.MUTPrefix(:len_trim(Modflow.MUTPrefix))//'o.'//Modflow.Prefix(:len_trim(Modflow.Prefix))//'.'//domain.name//'.HDS_DDN.tecplot.dat'
         call OpenAscii(FNum,FName)
         call Msg( 'To File: '//trim(FName))
 
-        write(FNum,*) 'Title = "Modflow HDS and DDN (Saturation) file Outputs "'
+        write(FNum,*) 'Title = "'//domain.name//' HDS and DDN (Saturation)"'
 
         write(FNum,'(a)') 'variables="X","Y","Z","Layer","Hydraulic Head","Saturation"'
         
-        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(1),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
-            zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED)'
+        write(output_line,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="'//domain.name//'" SOLUTIONTIME=',modflow.TIMOT(1),',N=',domain.nNodes,', E=',domain.nCells,', datapacking=block, &
+            zonetype='//domain.ElementType(:len_trim(domain.ElementType))//', VARLOCATION=([4,5,6]=CELLCENTERED)'
         
         TMPStr=', AUXDATA TimeUnits = "'//Modflow.Tunits(:len_trim(Modflow.Tunits))//'"'
         l1=len_trim(output_line)+1
@@ -8796,35 +8336,35 @@ module MUSG !
         write(FNum,'(a)') output_line(:l1)
 
         write(FNum,'(a)') '# x'
-        write(FNum,'(5e20.12)') (Modflow.gwf.x(i),i=1,Modflow.gwf.nNodes)
+        write(FNum,'(5e20.12)') (domain.x(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# y'
-        write(FNum,'(5e20.12)') (Modflow.gwf.y(i),i=1,Modflow.gwf.nNodes)
+        write(FNum,'(5e20.12)') (domain.y(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# z'
-        write(FNum,'(5e20.12)') (Modflow.gwf.z(i),i=1,Modflow.gwf.nNodes)
+        write(FNum,'(5e20.12)') (domain.z(i),i=1,domain.nNodes)
         write(FNum,'(a)') '# layer'
-        write(FNum,'(5i8)') (Modflow.gwf.lay(i),i=1,Modflow.gwf.nCells)
+        write(FNum,'(5i8)') (domain.lay(i),i=1,domain.nCells)
         write(FNum,'(a)') '# head'
-        write(FNum,'(5e20.12)') (Modflow.gwf.head(i,1),i=1,Modflow.gwf.nCells)
+        write(FNum,'(5e20.12)') (domain.head(i,1),i=1,domain.nCells)
         write(FNum,'(a)') '# saturation'
-        write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,1),i=1,Modflow.gwf.nCells)
+        write(FNum,'(5e20.12)') (domain.sat(i,1),i=1,domain.nCells)
         
-        do i=1,Modflow.gwf.nCells
-            write(FNum,'(8i8)') (Modflow.gwf.iNode(j,i),j=1,Modflow.gwf.nNodesPerCell)
+        do i=1,domain.nCells
+            write(FNum,'(8i8)') (domain.iNode(j,i),j=1,domain.nNodesPerCell)
         end do
        
         
         do j=2,Modflow.ntime
-            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',Modflow.gwf.nNodes,', E=',Modflow.gwf.nCells,', datapacking=block, &
+            write(FNum,'(a,f20.4,a,i8,a,i8,a)')'ZONE t="GWF" SOLUTIONTIME=',modflow.TIMOT(j),',N=',domain.nNodes,', E=',domain.nCells,', datapacking=block, &
             zonetype=febrick, VARLOCATION=([4,5,6]=CELLCENTERED), VARSHARELIST=([1,2,3,4,]), CONNECTIVITYSHAREZONE=1 '
             write(FNum,'(a)') '# head'
-            write(FNum,'(5e20.12)') (Modflow.gwf.head(i,j),i=1,Modflow.gwf.nCells)
+            write(FNum,'(5e20.12)') (domain.head(i,j),i=1,domain.nCells)
             write(FNum,'(a)') '# sat'
-            write(FNum,'(5e20.12)') (Modflow.gwf.sat(i,j),i=1,Modflow.gwf.nCells)
+            write(FNum,'(5e20.12)') (domain.sat(i,j),i=1,domain.nCells)
         enddo
         
         call FreeUnit(FNum)
 
-    end subroutine MUSG_GWF_HDS_DDN_ToTecplot
+    end subroutine MUSG_HDS_DDN_ToTecplot
     
     subroutine MUSG_GWF_IBOUND_ToTecplot(Modflow)
         implicit none
