@@ -4061,6 +4061,7 @@ module GeneralRoutines    !### bit setting routines
     character(512) :: TmpSTR
 
     character(1) :: str1
+    character(2) :: str2
     integer :: l1, l2
 
     !------------------------------------------------------------------------ Raster declarations
