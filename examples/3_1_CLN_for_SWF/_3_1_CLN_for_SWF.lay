@@ -1,8 +1,8 @@
 #!MC 1410
-$!VarSet |LFDSFN1| = '"_CLN_for_SWFo.swf1.GWF.HDS_DDN.tecplot.dat"'
-$!VarSet |LFDSVL1| = '"X" "Y" "Z" "Layer" "Hydraulic Head" "Saturation"'
-$!VarSet |LFDSFN2| = '"_CLN_for_SWFo.swf1.CLN.HDS_DDN.tecplot.dat"'
-$!VarSet |LFDSVL2| = '"X" "Y" "Z" "Layer" "Hydraulic Head" "Saturation"'
+$!VarSet |LFDSFN1| = '"_CLN_for_SWFo.swf1.GWF.tecplot.dat"'
+$!VarSet |LFDSVL1| = '"X" "Y" "Z" "Layer" "Ibound" "Initial head" "Kh" "GWF\n Hydraulic Head" "Saturation" "To STORAGE" "To CONSTANT_HEAD" "To CLN" "To FLOW_FACES"'
+$!VarSet |LFDSFN2| = '"_CLN_for_SWFo.swf1.CLN.tecplot.dat"'
+$!VarSet |LFDSVL2| = '"X" "Y" "Z" "Layer" "Ibound" "Initial head" "Kh" "GWF\n Hydraulic Head" "Saturation" "To STORAGE" "To CONSTANT_HEAD" "To CLN" "To FLOW_FACES" "CLN\n Hydraulic Head" "To GWF"'
 $!SetStyleBase Factory
 $!CreateColorMap 
   Name = 'Sequential - Viridis'
@@ -244,18 +244,18 @@ $!FrameLayout
   HeaderColor = Red
   XYPos
     {
-    X = 1
+    X = -1.3186
     Y = 0.25
     }
-  Width = 9
-  Height = 6
+  Width = 13.662
+  Height = 7.9897
 $!ThreeDAxis 
   AspectRatioLimit = 25
   BoxAspectRatioLimit = 25
 $!PlotType  = Cartesian3D
 $!FrameName  = 'Frame 001'
 $!GlobalTime 
-  SolutionTime = 60
+  SolutionTime = 300
 $!ActiveFieldMaps  =  [1-2]
 $!GlobalRGB 
   RedChannelVar = 4
@@ -264,7 +264,7 @@ $!GlobalRGB
   RangeMin = 0
   RangeMax = 1
 $!GlobalContour  1
-  Var = 5
+  Var = 8
   ColorMapName = 'Sequential - Viridis'
   DefNumLevels = 12
   Legend
@@ -272,82 +272,90 @@ $!GlobalContour  1
     Show = Yes
     XYPos
       {
-      X = 95
+      X = 80.015
+      Y = 17.227
+      }
+    IsVertical = No
+    HeaderTextShape
+      {
+      Height = 1.5
+      }
+    NumberTextShape
+      {
+      Height = 1.5
+      }
+    Box
+      {
+      BoxType = None
       }
     LabelIncrement = 99.8
     }
   ColorCutoff
     {
-    RangeMin = 250.507499993
-    RangeMax = 749.502499998
+    RangeMin = 500.004999995
+    RangeMax = 999
     }
   ColorMapFilter
     {
     ContinuousColor
       {
-      CMin = 1.00999999046
+      CMin = 999
       CMax = 999
       }
     }
 $!ContourLevels New
   ContourGroup = 1
   RawData
-12
 1
-1.1
-1.2
-1.3
-1.4
-1.5
-1.6
-1.7
-1.8
-1.9
-2
-2.1
+999
 $!GlobalContour  2
-  Var = 5
+  Var = 14
   ColorMapName = 'Sequential - Viridis'
-  DefNumLevels = 19
+  DefNumLevels = 5
   Legend
     {
     Show = Yes
     XYPos
       {
-      X = 95
+      X = 94.338
+      Y = 11.052
       }
+    IsVertical = No
+    HeaderTextShape
+      {
+      Height = 1.5
+      }
+    NumberTextShape
+      {
+      Height = 1.5
+      }
+    Box
+      {
+      BoxType = None
+      }
+    }
+  ColorCutoff
+    {
+    RangeMin = 1.26999998093
+    RangeMax = 1.78999996185
     }
   ColorMapFilter
     {
     ContinuousColor
       {
-      CMin = 0
-      CMax = 1
+      CMin = 1.00999999046
+      CMax = 2.04999995232
       }
     }
 $!ContourLevels New
   ContourGroup = 2
   RawData
-19
-50
-100
-150
-200
-250
-300
-350
-400
-450
-500
-550
-600
-650
-700
-750
-800
-850
-900
-950
+5
+1.05
+1.2875
+1.525
+1.7625
+2
 $!GlobalContour  3
   Var = 6
   ColorMapName = 'Sequential - Viridis'
@@ -585,7 +593,7 @@ $!FieldMap  [1]
 $!FieldMap  [2]
   Mesh
     {
-    Color = Multi
+    Color = Multi2
     LineThickness = 0.8
     }
   Contour
@@ -691,9 +699,9 @@ $!ThreeDAxis
     }
 $!IsoSurfaceAttributes  1
   IsoSurfaceSelection = OneSpecificValue
-  Isovalue1 = 250.507499993
-  Isovalue2 = 500.004999995
-  Isovalue3 = 749.502499998
+  Isovalue1 = 999
+  Isovalue2 = 999
+  Isovalue3 = 999
   Effects
     {
     LightingEffect = Gouraud
@@ -701,9 +709,9 @@ $!IsoSurfaceAttributes  1
 $!IsoSurfaceAttributes  2
   DefinitionContourGroup = 2
   IsoSurfaceSelection = OneSpecificValue
-  Isovalue1 = 250.507499993
-  Isovalue2 = 500.004999995
-  Isovalue3 = 749.502499998
+  Isovalue1 = 1.26999998093
+  Isovalue2 = 1.52999997139
+  Isovalue3 = 1.78999996185
   Contour
     {
     LineContourGroup = 2
@@ -979,12 +987,13 @@ $!ThreeDView
   AlphaAngle = 0.409314
   ViewerPosition
     {
-    X = 631.4786699490021
-    Y = 11.81613746228852
-    Z = 11.06618742637975
+    X = 616.6077786922385
+    Y = 12.09214866255129
+    Z = 11.17125011299744
     }
-  ViewWidth = 145.998
+  ViewWidth = 184.611
 $!FieldLayers 
+  ShowContour = Yes
   ShowEdge = No
   UseTranslucency = Yes
 $!StreamtraceLayers 
