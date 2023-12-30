@@ -853,6 +853,14 @@ module MUSG !
             CALL MUSG_ReadRCH(Modflow)  ! based on subroutine GWF2RCH8U1AR
             call MUSG_ReadRCH_StressPeriods(Modflow) ! based on subroutine GWF2RCH8U1RP
         end if
+        
+        IF(Modflow.iSMS/=0) THEN
+            !C------------------------------------------------------------------------
+            !C------Read SMS Package file
+            call Msg(' ')
+            call Msg('-------Read data from SMS:')
+            CALL MUSG_ReadSMS(Modflow)  ! based on subroutine SMS7U1AR
+        end if
 
         call MUSG_WriteVolumeBudgetToTecplot(Modflow)
         
@@ -5841,7 +5849,7 @@ module MUSG !
         
         !real :: rmin
         !real :: rmax
-        integer :: i, j, k, ncomp
+        integer :: i, j, k
 
         
         type (ModflowProject) Modflow
@@ -7800,6 +7808,428 @@ module MUSG !
         RETURN
     END SUBROUTINE CLNP
 
+      SUBROUTINE MUSG_ReadSMS(Modflow)      ! SMS7U1AR(IN,INTIB)
+
+      USE GLOBAL, ONLY: IOUT,&
+                 NLAY,ILAYCON4,ISYMFLG,INGNCn
+      USE GWFBCFMODULE, ONLY: LAYCON
+      USE SMSMODULE
+!sp      USE GNCMODULE, ONLY:ISYMGNC
+!sp      USE GNC2MODULE, ONLY:ISYMGNC2
+      USE GNCnMODULE, ONLY:ISYMGNCn
+
+      IMPLICIT NONE
+
+      !     ------------------------------------------------------------------
+!     SPECIFICATIONS:
+!     ------------------------------------------------------------------
+      INTRINSIC INT
+      !EXTERNAL URDCOM, URWORD, UPARLSTAL
+!     ------------------------------------------------------------------
+!     ARGUMENTS
+!     ------------------------------------------------------------------
+      INTEGER IN
+!     ------------------------------------------------------------------
+!     LOCAL VARIABLES
+!     ------------------------------------------------------------------
+      INTEGER lloc, istart, istop, i, K, IFDPARAM, MXVL, NPP
+      INTEGER IPCGUM
+      CHARACTER(LEN=200) line
+      REAL r, HCLOSEdum, HICLOSEdum,  thetadum, amomentdum,yo
+      REAL akappadum, gammadum, BREDUCDUM,BTOLDUM,RESLIMDUM
+!
+      type (ModflowProject) Modflow
+      
+      in=modflow.iSMS
+      iout=FNumEco
+!     LOCAL VARIABLES FOR GCG SOLVER
+
+!     ------------------------------------------------------------------
+!
+!1------IDENTIFY PACKAGE AND INITIALIZE.
+      WRITE(IOUT,1) IN
+    1 FORMAT(1X,/1X,'SMS -- SPARSE MATRIX SOLVER PACKAGE, VERSION 7',&
+     ', 5/2/2005',/,9X,'INPUT READ FROM UNIT',I3)
+      !ALLOCATE (HCLOSE, HICLOSE,BIGCHOLD,BIGCH)
+      !ALLOCATE (ITER1,THETA,MXITER,LINMETH,NONMETH,IPRSMS)
+      !ALLOCATE (Akappa,Gamma,Amomentum,Breduc,Btol,RES_LIM,&
+      ! Numtrack,IBFLAG)
+      ! DM: Allocate forcing term variables
+      !ALLOCATE (Rcutoff,ForcingAlpha,ForcingGamma,MaxRcutoff)
+      !ALLOCATE (ICUTOFF,NoMoreRcutoff,ITRUNCNEWTON)
+      ITRUNCNEWTON = 0
+      Rcutoff = -1.0
+      ForcingAlpha = (1.0 + sqrt(5.0)) / 2.0
+      ForcingGamma = 0.9
+      MaxRcutoff = 0.9
+      ICUTOFF = 0
+      NoMoreRcutoff = 0
+      ! End DM
+!
+      ISOLVEACTIVE=0
+      IBOTAV = 0
+      ISHIFT = 0
+      i = 1
+      THETA = 1.0
+      Akappa = 0.0
+      Gamma = 0.0
+      Amomentum = 0.0
+      Numtrack = 0
+      Btol = 0
+      Breduc = 0.
+      RES_LIM = 0.
+      IBFLAG = 0
+! Check if default solver values will be used
+      lloc = 1
+      IFDPARAM = 0
+      CALL URDCOM(In, IOUT, line)
+      NPP = 0
+      MXVL = 0
+      CALL UPARLSTAL(IN,IOUT,LINE,NPP,MXVL)
+      lloc = 1
+      CALL URWORD(LINE,LLOC,ISTART,ISTOP,1,I,R,IOUT,IN)
+      IF(LINE(ISTART:ISTOP).EQ.'SIMPLE') THEN
+        IFDPARAM = 1
+         WRITE(IOUT,21)
+   21    FORMAT(1X,'SIMPLE OPTION:',/,&
+          1x,'DEFAULT SOLVER INPUT VALUES FOR FAST SOLUTIONS')
+      ELSE IF(LINE(ISTART:ISTOP).EQ.'MODERATE') THEN
+         IFDPARAM=2
+         WRITE(IOUT,23)
+   23    FORMAT(1X,'MODERATE OPTION:',/,1X,'DEFAULT SOLVER',&
+              ' input VALUES REFLECT MODERETELY NONLINEAR MODEL')
+      ELSE IF(LINE(ISTART:ISTOP).EQ.'COMPLEX') THEN
+         IFDPARAM=3
+         WRITE(IOUT,25)
+   25    FORMAT(1X,'COMPLEX OPTION:',/,1X,'DEFAULT SOLVER',&
+      ' INPUT VALUES REFLECT STRONGLY NONLINEAR MODEL')
+      ELSE
+        BACKSPACE IN
+        WRITE(IOUT,27)
+   27   FORMAT(1X, ' ALL SOLVER INPUT DATA WILL BE READ',&
+                          1X,'FROM THE SOLVER INPUT FILE. ')
+      END IF
+!2------Read nonlinear iteration parameters and linear solver selection index
+      lloc = 1
+      CALL URDCOM(In, Iout, line)
+      CALL URWORD(line, lloc, istart, istop, 3, i, HCLOSEdum, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 3, i, HICLOSEdum, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 2, MXITER, r, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 2, ITER1, r, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 2, IPRSMS, r, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 2, Nonmeth, r, Iout, In)
+      CALL URWORD(line, lloc, istart, istop, 2, Linmeth, r, Iout, In)
+!2B----READ OPTIONS
+   30 CALL URWORD(LINE,LLOC,ISTART,ISTOP,1,I,R,IOUT,IN)
+      IF(LINE(ISTART:ISTOP).EQ.'SOLVEACTIVE') THEN
+        ISOLVEACTIVE=1
+        WRITE(IOUT,31)
+   31   FORMAT(1X,'ONLY ACTIVE NODES WILL BE PASSED TO THE SOLVER')
+      ELSEIF(LINE(ISTART:ISTOP).EQ.'DAMPBOT') THEN
+        IBOTAV=1
+        WRITE(IOUT,32)
+   32   FORMAT(1X,'BOTTOM DAMPING APPLIED TO EACH LINEAR SOLUTION')
+      ELSEIF(LINE(ISTART:ISTOP).EQ.'SHIFT') THEN
+        ISHIFT=1
+        WRITE(IOUT,33)
+   33   FORMAT(1X,'SOLUTION VECTOR WILL BE SHIFTED BEFORE AND AFTER',&
+         1X,'EACH LINEAR SOLVE')
+      ELSEIF(LINE(ISTART:ISTOP).EQ.'TRUNCATEDNEWTON') THEN
+        ITRUNCNEWTON=1
+        WRITE(IOUT,34)
+   34   FORMAT(1X,'TRUNCATED NEWTON OPTION WILL BE USED')
+      ELSEIF(LINE(ISTART:ISTOP).EQ.'TRUNCATEDNEWTONCUTOFF') THEN
+        ITRUNCNEWTON=1
+        CALL URWORD(LINE,LLOC,ISTART,ISTOP,3,I,YO,IOUT,IN)
+        MaxRcutoff = YO
+        WRITE(IOUT,35) YO
+   35   FORMAT(1X,'TRUNCATED NEWTON OPTION WILL BE USED WITH MAXCUTOFF'&
+          1X,'=', E12.5)
+      ENDIF
+      IF(LLOC.LT.200) GO TO 30
+!
+!      IF(NONMETH.NE.0) IBOTAV = 1  ! DO LIKE IN VERSION 1.4 OF MODFLOW-USG
+      IF(NONMETH.NE.0)THEN
+        IF ( IFDPARAM.EQ.0 ) THEN
+        lloc = 1
+        CALL URDCOM(In, Iout, line)
+        CALL URWORD(line, lloc, istart, istop, 3, i, thetadum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 3, i,akappadum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 3, i, gammadum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 3,i,amomentdum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 2, Numtrack, r, Iout, In)
+        Theta = Thetadum
+        Akappa = akappadum
+        Gamma = gammadum
+        Amomentum = amomentdum
+        IF( NUMTRACK.GT.0 ) THEN
+        CALL URWORD(line, lloc, istart, istop, 3, i,  Btoldum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 3, i,Breducdum, Iout, In)
+        CALL URWORD(line, lloc, istart, istop, 3, i,RESLIMDUM, Iout, In)
+        Btol = Btoldum
+        Breduc = Breducdum
+        RES_LIM = RESLIMDUM
+        ENDIF
+        ELSE
+        CALL SET_RELAX(IFDPARAM)
+        END IF
+        ! DM: Read truncated Newton enabled/disabled flag
+!SP        CALL URWORD(line, lloc, istart, istop, 2, ITRUNCNEWTON, r,
+!SP    1              Iout, In)
+        ! End DM
+      END IF
+!
+      HCLOSE = HCLOSEDUM
+      HICLOSE = HICLOSEDUM
+      IF ( Theta.LT.CLOSEZERO ) Theta = 1.0e-3
+!
+      ILAYCON4=0
+      DO K=1,NLAY
+        IF(LAYCON(K).EQ.4.OR.LAYCON(K).EQ.5)THEN
+          ILAYCON4=1
+        ENDIF
+      ENDDO
+!
+!      IF(ILAYCON4.NE.1.AND.INCLN.EQ.0)THEN
+!        IF(NONMETH.GT.0)NONMETH = -NONMETH
+!      ENDIF
+!3------Echo input of nonlinear iteratin parameters and linear solver index
+      WRITE(IOUT,9002) HCLOSE,HICLOSE,MXITER,ITER1,iprsms,&
+      NONMETH,LINMETH
+!
+ 9002 FORMAT(1X,'OUTER ITERATION CONVERGENCE CRITERION (HCLOSE) = ',&
+       E15.6,&
+           /1X,'INNER ITERATION CONVERGENCE CRITERION (HICLOSE) = ',&
+       E15.6,&
+           /1X,'MAXIMUM NUMBER OF OUTER ITERATIONS (MXITER)     = ',I9,&
+           /1X,'MAXIMUM NUMBER OF INNER ITERATIONS (ITER1)      = ',I9,&
+           /1X,'SOLVER PRINTOUT INDEX             (IPRSMS)      = ',I9,&
+           /1X,'NONLINEAR ITERATION METHOD    (NONLINMETH)      = ',I9,&
+           /1X,'LINEAR SOLUTION METHOD           (LINMETH)      = ',I9)
+!
+      IF(NONMETH.NE.0)THEN
+        WRITE(IOUT,9003)THETA,AKAPPA,GAMMA,AMOMENTUM,NUMTRACK
+        IF(NUMTRACK.NE.0) WRITE(IOUT,9004) BTOL,BREDUC,RES_LIM
+        WRITE(IOUT,9005) ITRUNCNEWTON
+      ENDIF
+9003  FORMAT(1X,'D-B-D WEIGHT REDUCTION FACTOR      (THETA)      = ',&
+       E15.6,&
+           /1X,'D-B-D WEIGHT INCREASE INCREMENT    (KAPPA)      = ',&
+       E15.6,&
+           /1X,'D-B-D PREVIOUS HISTORY FACTOR      (GAMMA)      = ',&
+       E15.6,&
+           /1X,'MOMENTUM TERM                  (AMOMENTUM)      = ',&
+       E15.6,&
+           /1X,'MAXIMUM NUMBER OF BACKTRACKS    (NUMTRACK)      = ',I9)
+9004  FORMAT(1X,'BACKTRACKING TOLERANCE FACTOR       (BTOL)      = ',&
+       E15.6,&
+           /1X,'BACKTRACKING REDUCTION FACTOR     (BREDUC)      = ',&
+       E15.6,&
+           /1X,'BACKTRACKING RESIDUAL LIMIT      (RES_LIM)      = ',&
+       E15.6)
+9005  FORMAT(1X,'TRUNCATED NEWTON FLAG     (ITRUNCNEWTON)      = ',I9)
+      IF(MXITER.LE.0) THEN
+        WRITE(*,5)
+        CALL USTOP(' ')
+      ELSEIF(ITER1.LE.0) THEN
+        WRITE(*,7)
+        CALL USTOP(' ')
+      ENDIF
+    5 FORMAT(/1X,'ERROR: OUTER ITERATION NUMBER MUST BE > 0.')
+    7 FORMAT(/1X,'ERROR: INNER ITERATION NUMBER MUST BE > 0.')
+!
+      ISYMFLG = 1
+      IF ( Nonmeth.GT.0 )Then
+        Write(iout,*) '***Newton Linearization will be used***'
+        Write(iout,*)
+        ISYMFLG = 0
+      ELSEIF ( Nonmeth.EQ.0 )Then
+        Write(iout,*) '***Picard Linearization will be used***'
+        Write(iout,*)
+      ELSEIF ( Nonmeth.LT.0 )Then
+        Write(iout,*) '***Picard Linearization will be used with relaxat&
+     ion***'
+        Write(iout,*)
+      ELSE
+        Write(iout,*) '***Incorrect value for variable Nonmeth was ',&
+                     'specified. Check input.***'
+        Write(iout,*)
+        Call USTOP('  ')
+      END IF
+!CCC
+!CCC-----SET ISOLVEACTIVE
+!CC      IF ( Linmeth==2 )Then
+!CC        IF(ISOLVEACTIVE.EQ.1) THEN
+!CC          ISOLVEACTIVE=0
+!CC          WRITE(IOUT,'(2A)') 'SOLVEACTIVE DOES NOT WORK WITH PCGU ',
+!CC     1      'LINEAR SOLVER. SOLVEACTIVE DISABLED.'
+!CC        ENDIF
+!CC      ENDIF
+!
+!!-----IF SOLVEACTIVE=0 SET IA2, JA2 HERE
+!      IF(ISOLVEACTIVE.EQ.0) CALL SMS_REDUCE0()
+!!
+!4------Call secondary subroutine to initialize and read linear solver parameters
+      IF ( Linmeth==1 )Then
+!4a-------for XMD solver
+        Write(iout,*) '***XMD linear solver will be used***'
+        !CALL XMD7U1AR(IN,IFDPARAM)
+        Write(iout,*)
+        ISYMFLG = 0
+        !IF(IACL.EQ.0) ISYMFLG = 1
+      ELSEIF ( Linmeth==2 )Then
+!4b-------for pcgu solver
+        Write(iout,*) '***PCGU linear solver will be used***'
+        !CALL PCGU7U1AR(IN, NJA, NEQS, MXITER, HICLOSE, ITER1, IPRSMS,&
+        !              IFDPARAM, IPCGUM)
+        Write(iout,*)
+        ISYMFLG = 0
+        IF (IPCGUM.EQ.1) ISYMFLG = 1
+      ELSEIF ( Linmeth==4 )Then
+!---------for ppcgu solver
+        Write(iout,*) '***Parallel PCGU linear solver will be used***'
+!sp        CALL PPCGU1AR(IN, NJA, NEQS, MXITER, HICLOSE, ITER1, IPRSMS,
+!sp     +                 IFDPARAM, IPCGUM)
+        Write(iout,*)
+        ISYMFLG = 0
+        IF ( IPCGUM.EQ.1 ) ISYMFLG = 1
+      ELSE
+!4c-----Incorrect linear solver flag
+        Write(iout,*) '***Incorrect value for Linear solution method ',&
+                     'specified. Check input.***'
+        Write(iout,*)
+        Call USTOP('  ')
+      END IF
+!sp      IF(INGNC.NE.0.)THEN
+!sp        IF(ISYMGNC.EQ.0.AND.ISYMFLG.EQ.1)THEN
+!sp          WRITE(IOUT,*) '***ISYMGNC and ISYMFLG mismatch, unsymmetric
+!sp     1 option selected with symmetric solver. Stopping.***'
+!sp          STOP
+!sp        ENDIF
+!sp      ENDIF
+!sp      IF(INGNC2.NE.0.)THEN
+!sp        IF(ISYMGNC2.EQ.0.AND.ISYMFLG.EQ.1)THEN
+!sp          WRITE(IOUT,*) '***ISYMGNC and ISYMFLG mismatch, unsymmetric
+!sp     1 option selected with symmetric solver. Stopping.***'
+!sp          STOP
+!sp        ENDIF
+!sp      ENDIF
+      IF(INGNCn.NE.0.)THEN
+        IF(ISYMGNCn.EQ.0.AND.ISYMFLG.EQ.1)THEN
+          WRITE(IOUT,*) '***ISYMGNCn and ISYMFLG mismatch, unsymmetric&
+      option selected with symmetric solver. Stopping.***'
+          STOP
+        ENDIF
+      ENDIF
+!!
+!!---------------------------------------------------------------------------------
+!!5-----Allocate space for nonlinear arrays and initialize
+!      ALLOCATE(HTEMP(NEQS))
+!      ALLOCATE (Hncg(MXITER),Lrch(3,MXITER))
+!      ALLOCATE (HncgL(MXITER),LrchL(MXITER))
+!!      IF(NONMETH.GT.0)THEN
+!        ALLOCATE (AMATFL(NJA))
+!!      ELSE
+!!        AMATFL => AMAT
+!!      ENDIF
+!      IF(IABS(NONMETH).EQ.1)THEN
+!        ALLOCATE (Wsave(NEQS),hchold(NEQS),DEold(NEQS))
+!        WSAVE = 0.
+!        HCHOLD = 0.
+!        DEold = 0.
+!      ENDIF
+!      Hncg = 0.0D0
+!      LRCH = 0
+!      HncgL = 0.0D0
+!      LRCHL = 0
+!!
+!      IF(ISOLVEACTIVE.EQ.1) THEN
+!        IF(INTIB.GT.0) ISOLVEACTIVE=2
+!        IF(IWDFLG.NE.0) ISOLVEACTIVE=3
+!      ENDIF
+!!-----IF SOLVEACTIVE=1 SET IA2, JA2 HERE FOR STATIC IBOUND
+!      IF(ISOLVEACTIVE.EQ.1) CALL SMS_REDUCE()
+!! ----------------------------------------------------------------------
+!!-------SET BOTMIN FOR NEWTON DAMPENING IF IBOTAV = 1 (do even if not IBOTAV=1)
+!!      IF (IBOTAV.EQ.0) THEN
+!!        ALLOCATE(CELLBOTMIN(1))
+!!      ELSE
+!        ALLOCATE(CELLBOTMIN(NODES))
+!!---------INITIALIZE CELLBOTM TO BOTTOM OF CELL
+!        DO N = 1, NODES
+!          CELLBOTMIN(N) = BOT(N)
+!        END DO
+!!---------USE BOTTOM OF MODEL FOR CONSTANTCV MODELS
+!        IF (ICONCV.NE.0) THEN
+!          DO K = NLAY, 1, -1
+!            NNDLAY = NODLAY(K)
+!            NSTRT = NODLAY(K-1)+1
+!            DO N = NNDLAY, NSTRT, -1
+!              BBOT = BOT(N)
+!              IF (CELLBOTMIN(N) < BBOT) THEN
+!                BBOT = CELLBOTMIN(N)
+!              END IF
+!!---------------PUSH THE VALUE UP TO OVERLYING CELLS IF
+!!               BBOT IS LESS THAN THE CELLBOTMIN IN THE
+!!               OVERLYING CELL
+!              I0 = IA(N) + 1
+!              I1 = IA(N+1) - 1
+!              DO J = I0, I1
+!                JCOL = JA(J)
+!                JCOLS = JAS(J)
+!                IF (JCOL < N .AND. IVC(JCOLS).EQ.1) THEN
+!                  IF (BBOT < CELLBOTMIN(JCOL)) THEN
+!                    CELLBOTMIN(JCOL) = BBOT
+!                  END IF
+!                END IF
+!              END DO
+!            END DO
+!          END DO
+!        END IF
+!!      END IF
+! ----------------------------------------------------------------------
+!6------Return
+      RETURN 
+      END SUBROUTINE MUSG_ReadSMS
+      
+      SUBROUTINE SET_RELAX(IFDPARAM)
+      USE SMSMODULE, ONLY: Akappa,Gamma,Amomentum,Breduc,Btol,Numtrack,&
+                          THETA, Res_lim
+      INTEGER IFDPARAM
+! Simple option
+      SELECT CASE ( IFDPARAM )
+      CASE ( 1 )
+        Theta = 1.0
+        Akappa = 0.0
+        Gamma = 0.0
+        Amomentum = 0.0
+        Numtrack = 0
+        Btol = 0.0
+        Breduc = 0.0
+        Res_lim = 0.0
+! Moderate
+       CASE ( 2 )
+        Theta = 0.9
+        Akappa = 0.0001
+        Gamma = 0.0
+        Amomentum = 0.0
+        Numtrack = 0
+        Btol = 0.0
+        Breduc = 0.0
+        Res_lim = 0.0
+! Complex
+       CASE ( 3 )
+        Theta = 0.8
+        Akappa = 0.0001
+        Gamma = 0.0
+        Amomentum = 0.0
+        Numtrack = 20
+        Btol = 1.05
+        Breduc = 0.1
+        Res_lim = 0.002
+      END SELECT
+      RETURN
+      END
 
    
     subroutine MUSG_WriteVolumeBudgetToTecplot(Modflow)
@@ -8070,7 +8500,6 @@ module MUSG !
         character(MAXLBL) :: FName
         integer :: i, j, nvar, nVarShared
 
-        character(4000) :: line
         character(4000) :: VarSharedStr
 
 

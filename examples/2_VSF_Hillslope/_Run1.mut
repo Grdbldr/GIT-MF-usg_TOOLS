@@ -4,6 +4,8 @@
 
 modflow_usg
 
+ tag modflow files
+
  process modflow files
  hillslope    
 

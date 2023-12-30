@@ -209,10 +209,10 @@ $!Page
     PaperGridSpacing = HalfInch
     RegionInWorkArea
       {
-      X1 = 1
+      X1 = -1.384
       Y1 = 0.25
-      X2 = 10
-      Y2 = 8.25
+      X2 = 12.33
+      Y2 = 8.273
       }
     }
 ### Frame Number 1 ###
@@ -255,7 +255,7 @@ $!GlobalRGB
 $!GlobalContour  1
   Var = 6
   ColorMapName = 'Sequential - Viridis'
-  DefNumLevels = 11
+  DefNumLevels = 9
   Legend
     {
     Show = Yes
@@ -887,11 +887,11 @@ $!ThreeDView
   AlphaAngle = 0.145435
   ViewerPosition
     {
-    X = 650.3404412884527
-    Y = 12.45828171548805
-    Z = 6.765907254736661
+    X = 633.8815365009386
+    Y = 11.78268253215599
+    Z = 6.547856329273815
     }
-  ViewWidth = 186.036
+  ViewWidth = 166.441
 $!FieldLayers 
   ShowContour = Yes
   ShowShade = Yes
